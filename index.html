@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Active Noise Cancellation Demo</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; text-align: center; }
+        button { padding: 10px 20px; margin: 10px; }
+        #status { margin: 20px; color: #333; }
+        .error { color: red; }
+        .success { color: green; }
+    </style>
+</head>
+<body>
+    <h1>Software-Based Active Noise Cancellation Demo</h1>
+    <p>This demo uses Web Audio API to apply a low-pass filter for basic noise reduction. Wear headphones for best results. Ensure you're on HTTPS for microphone access.</p>
+    
+    <button id="checkPermBtn">Check Microphone Permission</button>
+    <button id="requestPermBtn">Request Microphone Permission</button>
+    <button id="startBtn" disabled>Start ANC</button>
+    <button id="stopBtn" disabled>Stop ANC</button>
+    <div id="status">Click "Check Microphone Permission" first.</div>
+    
+    <script>
+        let audioContext, source, filter, destination;
+        const statusDiv = document.getElementById('status');
+        
+        // Check permission status (if supported)
+        document.getElementById('checkPermBtn').addEventListener('click', async () => {
+            if (navigator.permissions) {
+                try {
+                    const permission = await navigator.permissions.query({ name: 'microphone' });
+                    statusDiv.textContent = `Microphone permission: ${permission.state}`;
+                    statusDiv.className = permission.state === 'granted' ? 'success' : permission.state === 'denied' ? 'error' : '';
+                    if (permission.state === 'granted') {
+                        document.getElementById('startBtn').disabled = false;
+                    }
+                } catch (err) {
+                    statusDiv.textContent = 'Permissions API not supported. Try requesting permission directly.';
+                    statusDiv.className = 'error';
+                }
+            } else {
+                statusDiv.textContent = 'Permissions API not available. Proceed to request permission.';
+                statusDiv.className = '';
+            }
+        });
+        
+        // Explicitly request permission
+        document.getElementById('requestPermBtn').addEventListener('click', async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                stream.getTracks().forEach(track => track.stop()); // Stop immediately after granting
+                statusDiv.textContent = 'Microphone permission granted!';
+                statusDiv.className = 'success';
+                document.getElementById('startBtn').disabled = false;
+            } catch (err) {
+                statusDiv.textContent = 'Permission denied or error: ' + err.message;
+                statusDiv.className = 'error';
+            }
+        });
+        
+        document.getElementById('startBtn').addEventListener('click', async () => {
+            try {
+                // Request microphone access (should prompt if not already granted)
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                // Create audio context
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // Create source from microphone
+                source = audioContext.createMediaStreamSource(stream);
+                
+                // Create low-pass filter for noise reduction (cuts high frequencies)
+                filter = audioContext.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.value = 1000; // Adjust cutoff frequency (Hz) for noise type
+                filter.Q.value = 1; // Quality factor
+                
+                // Connect: source -> filter -> destination (speakers)
+                source.connect(filter);
+                filter.connect(audioContext.destination);
+                
+                // Update UI
+                document.getElementById('startBtn').disabled = true;
+                document.getElementById('stopBtn').disabled = false;
+                statusDiv.textContent = 'ANC active. Adjust filter frequency if needed.';
+                statusDiv.className = 'success';
+                
+            } catch (err) {
+                statusDiv.textContent = 'Error starting ANC: ' + err.message + '. Check permissions and try again.';
+                statusDiv.className = 'error';
+            }
+        });
+        
+        document.getElementById('stopBtn').addEventListener('click', () => {
+            if (audioContext) {
+                audioContext.close();
+                document.getElementById('startBtn').disabled = false;
+                document.getElementById('stopBtn').disabled = true;
+                statusDiv.textContent = 'ANC stopped.';
+                statusDiv.className = '';
+            }
+        });
+    </script>
+</body>
+</html>
