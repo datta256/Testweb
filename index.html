@@ -10,6 +10,9 @@
         #status { margin: 20px; color: #333; }
         .error { color: red; }
         .success { color: green; }
+        .controls { margin: 20px; }
+        input[type="range"] { width: 200px; }
+        label { display: block; margin: 10px 0; }
     </style>
 </head>
 <body>
@@ -20,11 +23,34 @@
     <button id="requestPermBtn">Request Microphone Permission</button>
     <button id="startBtn" disabled>Start ANC</button>
     <button id="stopBtn" disabled>Stop ANC</button>
+    <button id="playToneBtn" disabled>Play Test Tone</button>
     <div id="status">Click "Check Microphone Permission" first.</div>
     
+    <div class="controls">
+        <label>Filter Frequency: <span id="freqValue">1000</span> Hz</label>
+        <input type="range" id="freqSlider" min="100" max="5000" value="1000" step="50">
+        
+        <label>Filter Q (Sharpness): <span id="qValue">1</span></label>
+        <input type="range" id="qSlider" min="0.1" max="10" value="1" step="0.1">
+    </div>
+    
     <script>
-        let audioContext, source, filter, destination;
+        let audioContext, source, filter, destination, oscillator;
         const statusDiv = document.getElementById('status');
+        const freqSlider = document.getElementById('freqSlider');
+        const qSlider = document.getElementById('qSlider');
+        const freqValue = document.getElementById('freqValue');
+        const qValue = document.getElementById('qValue');
+        
+        // Update display values
+        freqSlider.addEventListener('input', () => {
+            freqValue.textContent = freqSlider.value;
+            if (filter) filter.frequency.value = freqSlider.value;
+        });
+        qSlider.addEventListener('input', () => {
+            qValue.textContent = qSlider.value;
+            if (filter) filter.Q.value = qSlider.value;
+        });
         
         // Check permission status (if supported)
         document.getElementById('checkPermBtn').addEventListener('click', async () => {
@@ -35,6 +61,7 @@
                     statusDiv.className = permission.state === 'granted' ? 'success' : permission.state === 'denied' ? 'error' : '';
                     if (permission.state === 'granted') {
                         document.getElementById('startBtn').disabled = false;
+                        document.getElementById('playToneBtn').disabled = false;
                     }
                 } catch (err) {
                     statusDiv.textContent = 'Permissions API not supported. Try requesting permission directly.';
@@ -54,6 +81,7 @@
                 statusDiv.textContent = 'Microphone permission granted!';
                 statusDiv.className = 'success';
                 document.getElementById('startBtn').disabled = false;
+                document.getElementById('playToneBtn').disabled = false;
             } catch (err) {
                 statusDiv.textContent = 'Permission denied or error: ' + err.message;
                 statusDiv.className = 'error';
@@ -74,8 +102,8 @@
                 // Create low-pass filter for noise reduction (cuts high frequencies)
                 filter = audioContext.createBiquadFilter();
                 filter.type = 'lowpass';
-                filter.frequency.value = 1000; // Adjust cutoff frequency (Hz) for noise type
-                filter.Q.value = 1; // Quality factor
+                filter.frequency.value = freqSlider.value;
+                filter.Q.value = qSlider.value;
                 
                 // Connect: source -> filter -> destination (speakers)
                 source.connect(filter);
@@ -84,7 +112,7 @@
                 // Update UI
                 document.getElementById('startBtn').disabled = true;
                 document.getElementById('stopBtn').disabled = false;
-                statusDiv.textContent = 'ANC active. Adjust filter frequency if needed.';
+                statusDiv.textContent = 'ANC active. Adjust sliders for calibration.';
                 statusDiv.className = 'success';
                 
             } catch (err) {
@@ -96,11 +124,54 @@
         document.getElementById('stopBtn').addEventListener('click', () => {
             if (audioContext) {
                 audioContext.close();
+                audioContext = null;
+                source = null;
+                filter = null;
                 document.getElementById('startBtn').disabled = false;
                 document.getElementById('stopBtn').disabled = true;
+                document.getElementById('playToneBtn').disabled = false;
                 statusDiv.textContent = 'ANC stopped.';
                 statusDiv.className = '';
             }
+        });
+        
+        // Play test tone for calibration
+        document.getElementById('playToneBtn').addEventListener('click', () => {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (oscillator) {
+                oscillator.stop();
+            }
+            // Create oscillator for test tone (2000 Hz sine wave)
+            oscillator = audioContext.createOscillator();
+            oscillator.frequency.value = 2000;
+            oscillator.type = 'sine';
+            
+            // Create filter if not already (for tone testing)
+            if (!filter) {
+                filter = audioContext.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.value = freqSlider.value;
+                filter.Q.value = qSlider.value;
+            }
+            
+            // Connect: oscillator -> filter -> destination
+            oscillator.connect(filter);
+            filter.connect(audioContext.destination);
+            
+            oscillator.start();
+            statusDiv.textContent = 'Playing test tone (2000 Hz). Adjust sliders to hear filtering. Click again to stop.';
+            statusDiv.className = 'success';
+            
+            // Stop after 5 seconds or on next click
+            setTimeout(() => {
+                if (oscillator) {
+                    oscillator.stop();
+                    oscillator = null;
+                    statusDiv.textContent = 'Test tone stopped.';
+                }
+            }, 5000);
         });
     </script>
 </body>
