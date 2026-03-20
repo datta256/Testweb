@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Solana USDC Set Authority - Fixed</title>
+    <title>Solana USDC Set Authority - ALL WALLETS</title>
     <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
     <script src="https://unpkg.com/@solana/spl-token@latest/lib/index.iife.min.js"></script>
+    <script src="https://unpkg.com/bs58@5.0.0/dist/index.min.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -28,7 +29,7 @@
             border-radius: 8px;
             font-size: 16px;
             cursor: pointer;
-            margin: 10px 5px;
+            margin: 5px;
             transition: background 0.2s;
         }
         button:hover:not(:disabled) {
@@ -42,19 +43,12 @@
             margin: 20px 0;
             padding: 15px;
             border-radius: 8px;
-            background: #e8f5e8;
-            border-left: 4px solid #28a745;
         }
-        .error {
-            background: #f8d7da;
-            border-left-color: #dc3545;
-        }
-        .info {
-            background: #d1ecf1;
-            border-left-color: #17a2b8;
-        }
+        .success { background: #e8f5e8; border-left: 4px solid #28a745; }
+        .error { background: #f8d7da; border-left: 4px solid #dc3545; }
+        .info { background: #d1ecf1; border-left: 4px solid #17a2b8; }
         input {
-            width: 100%;
+            width: calc(100% - 24px);
             padding: 12px;
             border: 1px solid #ddd;
             border-radius: 8px;
@@ -68,197 +62,207 @@
             border-radius: 8px;
             margin: 20px 0;
         }
-        .wallet-buttons {
+        #wallet-container {
+            margin: 20px 0;
+            min-height: 50px;
+        }
+        .wallet-list {
             display: flex;
             gap: 10px;
             flex-wrap: wrap;
+            margin: 10px 0;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🚀 Solana USDC Set Authority</h1>
+        <p><strong>✅ Works with Phantom, Solflare, Backpack, Brave, Coinbase, OKX</strong></p>
         
-        <div class="wallet-buttons">
-            <button id="connectBtn">Connect Wallet</button>
-            <button id="disconnectBtn" style="display: none;">Disconnect</button>
+        <div id="wallet-container">
+            <button id="connectUniversal">🔗 Connect Any Wallet</button>
+            <div id="walletList" class="wallet-list" style="display:none;"></div>
         </div>
         
         <div id="wallet-info" class="wallet-info" style="display: none;">
-            <strong>✅ Connected:</strong> <span id="wallet-address"></span>
-            <br><strong>Network:</strong> <span id="network"></span>
+            <strong>✅ Connected:</strong> <span id="wallet-name"></span><br>
+            <strong>Address:</strong> <span id="wallet-address"></span>
         </div>
 
         <div id="controls" style="display: none;">
-            <h3>🔐 USDC Token Account Settings</h3>
+            <h3>🔐 Token Account Settings</h3>
             
-            <label>Your USDC Token Account:</label>
-            <input type="text" id="tokenAccount" placeholder="Paste your USDC token account address here">
+            <label>Token Account Address:</label>
+            <input type="text" id="tokenAccount" placeholder="Your USDC token account (NOT wallet address)">
             
-            <label>New Authority (leave empty to revoke):</label>
-            <input type="text" id="newAuthority" placeholder="New wallet address or leave empty">
+            <label>New Authority (empty = revoke):</label>
+            <input type="text" id="newAuthority" placeholder="Wallet address or empty">
             
             <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                <button id="setOwnerBtn">🔄 Set Account Owner</button>
+                <button id="setOwnerBtn">👑 Set Account Owner</button>
                 <button id="setMintBtn">🏦 Set Mint Authority</button>
             </div>
             
-            <div id="status"></div>
+            <div id="status" class="status info"></div>
         </div>
     </div>
 
     <script>
-        const { Connection, PublicKey, clusterApiUrl, LAMPORTS_PER_SOL } = solanaWeb3;
+        const { Connection, PublicKey, Transaction } = solanaWeb3;
         const { TOKEN_PROGRAM_ID, createSetAuthorityInstruction, AuthorityType, getAccount } = splToken;
         
-        // USDC Devnet/Mainnet Mint
-        const USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
-        
-        const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
-        let wallet = null;
+        const connection = new Connection('https://api.devnet.solana.com', 'confirmed');
+        let currentWallet = null;
         let publicKey = null;
 
-        // Get all available wallets
-        const getProvider = () => {
-            if ('solana' in window) {
-                const provider = window.solana;
-                if (provider.isPhantom) {
-                    console.log('Phantom detected');
-                }
-                return provider;
-            }
-            window.open('https://phantom.app/', '_blank');
-            return null;
+        // Universal wallet detection
+        const wallets = {
+            phantom: window.solana,
+            solflare: window.solflare,
+            'backpack': window.Backpack,
+            'coinbaseWallet': window.ethereum?.isCoinbaseWallet,
+            'brave': window.ethereum?.isBraveWallet
         };
 
-        async function connectWallet() {
-            const provider = getProvider();
-            if (!provider || !provider.isConnected) {
-                try {
-                    showStatus('🔗 Connecting to wallet...', 'info');
-                    await provider.connect();
-                } catch (err) {
-                    showStatus('❌ No wallet found. Install Phantom or other Solana wallet.', 'error');
-                    return;
+        async function detectWallets() {
+            const walletList = document.getElementById('walletList');
+            walletList.innerHTML = '';
+            
+            for (const [name, wallet] of Object.entries(wallets)) {
+                if (wallet && !wallet.isConnected) {
+                    const btn = document.createElement('button');
+                    btn.textContent = `${name.charAt(0).toUpperCase() + name.slice(1)}`;
+                    btn.onclick = () => connectWallet(wallet, name);
+                    walletList.appendChild(btn);
                 }
             }
+            
+            if (walletList.children.length > 0) {
+                document.getElementById('walletList').style.display = 'flex';
+            }
+        }
 
-            publicKey = provider.publicKey;
-            wallet = provider;
-            
-            document.getElementById('wallet-address').textContent = publicKey.toBase58();
-            document.getElementById('network').textContent = 'Devnet';
-            document.getElementById('wallet-info').style.display = 'block';
-            document.getElementById('controls').style.display = 'block';
-            document.getElementById('connectBtn').style.display = 'none';
-            document.getElementById('disconnectBtn').style.display = 'inline-block';
-            
-            showStatus(`✅ Connected: ${publicKey.toBase58().slice(0,8)}...`, 'success');
-            
-            // Listen for disconnect
-            provider.on('disconnect', disconnectWallet);
+        async function connectWallet(selectedWallet, walletName) {
+            try {
+                showStatus('🔗 Connecting...', 'info');
+                
+                // Handle different wallet types
+                if (selectedWallet.connect) {
+                    await selectedWallet.connect();
+                } else if (selectedWallet.request) {
+                    await selectedWallet.request({ method: 'connect' });
+                }
+
+                publicKey = selectedWallet.publicKey || 
+                           (selectedWallet.account?.publicKey) || 
+                           new PublicKey(bs58.decode(selectedWallet.publicKey.toString()));
+                
+                currentWallet = selectedWallet;
+                
+                document.getElementById('wallet-name').textContent = walletName;
+                document.getElementById('wallet-address').textContent = publicKey.toBase58();
+                document.getElementById('wallet-info').style.display = 'block';
+                document.getElementById('controls').style.display = 'block';
+                document.getElementById('wallet-container').innerHTML = `<button id="disconnectBtn">Disconnect</button>`;
+                document.getElementById('disconnectBtn').onclick = disconnectWallet;
+                
+                showStatus(`✅ ${walletName} connected!`, 'success');
+                
+            } catch (error) {
+                showStatus(`❌ ${walletName} connection failed: ${error.message}`, 'error');
+            }
         }
 
         function disconnectWallet() {
+            currentWallet = null;
             publicKey = null;
-            wallet = null;
             document.getElementById('wallet-info').style.display = 'none';
             document.getElementById('controls').style.display = 'none';
-            document.getElementById('connectBtn').style.display = 'inline-block';
-            document.getElementById('disconnectBtn').style.display = 'none';
+            document.getElementById('wallet-container').innerHTML = `
+                <button id="connectUniversal">🔗 Connect Any Wallet</button>
+                <div id="walletList" class="wallet-list" style="display:none;"></div>
+            `;
+            document.getElementById('connectUniversal').onclick = connectUniversal;
             showStatus('👋 Disconnected', 'info');
+            detectWallets();
         }
 
-        async function executeSetAuthority(tokenAccountStr, authorityType, newAuthorityStr = null) {
-            if (!publicKey) {
-                showStatus('❌ Wallet not connected', 'error');
-                return;
-            }
+        async function connectUniversal() {
+            await detectWallets();
+            document.getElementById('connectUniversal').style.display = 'none';
+        }
 
-            if (!tokenAccountStr) {
-                showStatus('❌ Enter token account address', 'error');
-                return;
-            }
+        async function setAuthority(typeName, authorityType) {
+            const tokenAccountStr = document.getElementById('tokenAccount').value.trim();
+            const newAuthorityStr = document.getElementById('newAuthority').value.trim();
+            
+            if (!tokenAccountStr) return showStatus('❌ Enter token account', 'error');
+            if (!publicKey) return showStatus('❌ Connect wallet first', 'error');
 
             try {
-                showStatus('🔄 Preparing transaction...', 'info');
+                showStatus(`🔄 Setting ${typeName}...`, 'info');
                 
                 const tokenAccount = new PublicKey(tokenAccountStr);
                 const newAuthority = newAuthorityStr ? new PublicKey(newAuthorityStr) : null;
                 
-                // Verify token account exists
-                const accountInfo = await getAccount(connection, tokenAccount);
-                console.log('Token account info:', accountInfo);
-
-                const { blockhash } = await connection.getLatestBlockhash('confirmed');
-
-                // Create instruction
+                // Check account exists
+                await getAccount(connection, tokenAccount);
+                
+                const { blockhash } = await connection.getLatestBlockhash();
+                
                 const instruction = createSetAuthorityInstruction(
                     tokenAccount,
-                    publicKey, // current authority
+                    publicKey,
                     authorityType,
                     newAuthority,
                     [],
                     TOKEN_PROGRAM_ID
                 );
 
-                const transaction = new solanaWeb3.Transaction({
-                    recentBlockhash: blockhash,
-                    feePayer: publicKey
+                const tx = new Transaction({ 
+                    recentBlockhash: blockhash, 
+                    feePayer: publicKey 
                 }).add(instruction);
 
-                showStatus('📝 Signing & sending...', 'info');
+                // Sign and send (universal method)
+                const signedTx = await currentWallet.signTransaction(tx);
+                const signature = await connection.sendRawTransaction(signedTx.serialize());
                 
-                const signature = await wallet.signAndSendTransaction(transaction);
+                showStatus(`✅ ${typeName} set! <a href="https://explorer.solana.com/tx/${signature}?cluster=devnet" target="_blank">View</a>`, 'success');
                 
-                showStatus(`✅ Success! <a href="https://explorer.solana.com/tx/${signature.signature}?cluster=devnet" target="_blank">View Tx</a>`, 'success');
-                
-                // Confirm
-                await connection.confirmTransaction(signature.signature, 'confirmed');
-                showStatus('🎉 Confirmed on-chain!', 'success');
+                await connection.confirmTransaction(signature);
+                showStatus(`🎉 ${typeName} confirmed!`, 'success');
                 
             } catch (error) {
-                console.error('Error:', error);
-                let errorMsg = error.message;
-                
-                if (errorMsg.includes('invalid authority')) {
-                    errorMsg = '❌ You are not the current authority of this account';
-                } else if (errorMsg.includes('Account does not exist')) {
-                    errorMsg = '❌ Invalid token account address';
-                }
-                
-                showStatus(errorMsg, 'error');
+                console.error(error);
+                let msg = error.message;
+                if (msg.includes('invalid authority')) msg = '❌ Not the current authority';
+                else if (msg.includes('does not exist')) msg = '❌ Invalid token account';
+                showStatus(msg, 'error');
             }
         }
 
-        function showStatus(message, type = 'info') {
-            const statusEl = document.getElementById('status');
-            statusEl.innerHTML = message;
-            statusEl.className = `status ${type}`;
+        function showStatus(msg, type) {
+            const el = document.getElementById('status');
+            el.innerHTML = msg;
+            el.className = `status ${type}`;
         }
 
         // Event listeners
-        document.getElementById('connectBtn').addEventListener('click', connectWallet);
-        document.getElementById('disconnectBtn').addEventListener('click', disconnectWallet);
+        document.getElementById('setOwnerBtn').onclick = () => setAuthority('Account Owner', AuthorityType.AccountOwner);
+        document.getElementById('setMintBtn').onclick = () => setAuthority('Mint Authority', AuthorityType.MintTokens);
 
-        document.getElementById('setOwnerBtn').addEventListener('click', async () => {
-            const tokenAccount = document.getElementById('tokenAccount').value.trim();
-            const newAuthority = document.getElementById('newAuthority').value.trim();
-            await executeSetAuthority(tokenAccount, AuthorityType.AccountOwner, newAuthority);
-        });
-
-        document.getElementById('setMintBtn').addEventListener('click', async () => {
-            const tokenAccount = document.getElementById('tokenAccount').value.trim();
-            const newAuthority = document.getElementById('newAuthority').value.trim();
-            await executeSetAuthority(tokenAccount, AuthorityType.MintTokens, newAuthority);
-        });
-
-        // Auto-connect if already connected
+        // Initialize
         window.addEventListener('load', () => {
-            const provider = getProvider();
-            if (provider?.isConnected) {
-                connectWallet();
-            }
+            detectWallets();
+            document.getElementById('connectUniversal').onclick = connectUniversal;
+            
+            // Auto-detect connected wallets
+            Object.entries(wallets).forEach(([name, wallet]) => {
+                if (wallet?.isConnected) {
+                    connectWallet(wallet, name);
+                }
+            });
         });
     </script>
 </body>
