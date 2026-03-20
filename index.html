@@ -3,139 +3,228 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enhanced Noise Reduction Demo</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <title>Solana USDC Set Authority</title>
+    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+    <script src="https://unpkg.com/@solana/spl-token@latest/lib/index.iife.min.js"></script>
+    <script src="https://unpkg.com/@solana/wallet-adapter-base@0.9.23/dist/umd/index.min.js"></script>
+    <script src="https://unpkg.com/@solana/wallet-standard-features@0.9.2/dist/umd/index.min.js"></script>
+    <script src="https://unpkg.com/@solana/wallet-standard-ui@0.2.0/dist/umd/index.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; text-align: center; }
-        button { padding: 10px 20px; margin: 10px; }
-        #status { margin: 20px; color: #333; }
-        .error { color: red; }
-        .success { color: green; }
-        .controls { margin: 20px; }
-        input[type="range"] { width: 200px; }
-        label { display: block; margin: 10px 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #9945FF;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px 5px;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #7A39FF;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 8px;
+            background: #e8f5e8;
+            border-left: 4px solid #28a745;
+        }
+        .error {
+            background: #f8d7da;
+            border-left-color: #dc3545;
+        }
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-size: 16px;
+        }
+        .wallet-info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
     </style>
 </head>
 <body>
-    <h1>Enhanced Software-Based Noise Reduction Demo</h1>
-    <p>This uses Tone.js for adaptive filtering and noise gating to reduce noise in your mic input. Not true ANC, but better at attenuating background sounds. Wear headphones.</p>
-    
-    <button id="checkPermBtn">Check Microphone Permission</button>
-    <button id="requestPermBtn">Request Microphone Permission</button>
-    <button id="startBtn" disabled>Start Noise Reduction</button>
-    <button id="stopBtn" disabled>Stop Noise Reduction</button>
-    <button id="playToneBtn" disabled>Play Test Tone</button>
-    <div id="status">Click "Check Microphone Permission" first.</div>
-    
-    <div class="controls">
-        <label>Filter Frequency: <span id="freqValue">1000</span> Hz</label>
-        <input type="range" id="freqSlider" min="100" max="5000" value="1000" step="50">
+    <div class="container">
+        <h1>🚀 Solana USDC Set Authority</h1>
         
-        <label>Noise Gate Threshold: <span id="gateValue">-30</span> dB</label>
-        <input type="range" id="gateSlider" min="-60" max="-10" value="-30" step="1">
+        <div id="wallet-container"></div>
+        
+        <div id="wallet-info" class="wallet-info" style="display: none;">
+            <strong>Connected Wallet:</strong> <span id="wallet-address"></span>
+            <br><strong>Network:</strong> <span id="network"></span>
+        </div>
+
+        <div id="controls" style="display: none;">
+            <h3>USDC Token Account Settings</h3>
+            
+            <label>Token Account:</label>
+            <input type="text" id="tokenAccount" placeholder="Enter your USDC token account address">
+            
+            <label>New Authority (optional):</label>
+            <input type="text" id="newAuthority" placeholder="Leave empty to revoke">
+            
+            <button id="setAuthorityBtn">Set Authority</button>
+            
+            <div id="status"></div>
+        </div>
     </div>
-    
+
     <script>
-        let mic, filter, gate;
-        const statusDiv = document.getElementById('status');
-        const freqSlider = document.getElementById('freqSlider');
-        const gateSlider = document.getElementById('gateSlider');
-        const freqValue = document.getElementById('freqValue');
-        const gateValue = document.getElementById('gateValue');
+        const { Connection, PublicKey, clusterApiUrl } = solanaWeb3;
+        const { TOKEN_PROGRAM_ID, createSetAuthorityInstruction, AuthorityType } = splToken;
         
-        // Update display values and apply to filters
-        freqSlider.addEventListener('input', () => {
-            freqValue.textContent = freqSlider.value;
-            if (filter) filter.frequency.value = freqSlider.value;
-        });
-        gateSlider.addEventListener('input', () => {
-            gateValue.textContent = gateSlider.value;
-            if (gate) gate.threshold.value = gateSlider.value;
-        });
+        // USDC Mainnet Mint (Devnet/Mainnet)
+        const USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"); // USDC
         
-        // Check permission status
-        document.getElementById('checkPermBtn').addEventListener('click', async () => {
-            if (navigator.permissions) {
-                try {
-                    const permission = await navigator.permissions.query({ name: 'microphone' });
-                    statusDiv.textContent = `Microphone permission: ${permission.state}`;
-                    statusDiv.className = permission.state === 'granted' ? 'success' : permission.state === 'denied' ? 'error' : '';
-                    if (permission.state === 'granted') {
-                        document.getElementById('startBtn').disabled = false;
-                        document.getElementById('playToneBtn').disabled = false;
-                    }
-                } catch (err) {
-                    statusDiv.textContent = 'Permissions API not supported.';
-                    statusDiv.className = 'error';
+        // Network configuration
+        const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
+        
+        let wallet;
+        let connected = false;
+
+        // Initialize wallet adapter
+        async function initWallet() {
+            const walletContainer = document.getElementById('wallet-container');
+            
+            const wallets = await window.solana.findAllWallets();
+            const standardWallets = wallets.filter(wallet => 
+                wallet.features.includes('standardWalletAdapter')
+            );
+
+            window.solanaWalletStandard.registerWalletUI({
+                wallets: standardWallets,
+                onConnect(wallet) {
+                    connectWallet(wallet);
+                },
+                onDisconnect() {
+                    disconnectWallet();
                 }
-            } else {
-                statusDiv.textContent = 'Permissions API not available.';
-                statusDiv.className = '';
-            }
-        });
-        
-        // Request permission
-        document.getElementById('requestPermBtn').addEventListener('click', async () => {
+            });
+        }
+
+        async function connectWallet(selectedWallet) {
+            wallet = selectedWallet;
             try {
-                await navigator.mediaDevices.getUserMedia({ audio: true });
-                statusDiv.textContent = 'Microphone permission granted!';
-                statusDiv.className = 'success';
-                document.getElementById('startBtn').disabled = false;
-                document.getElementById('playToneBtn').disabled = false;
-            } catch (err) {
-                statusDiv.textContent = 'Permission denied: ' + err.message;
-                statusDiv.className = 'error';
+                await wallet.connect();
+                connected = true;
+                
+                const publicKey = wallet.publicKey;
+                document.getElementById('wallet-address').textContent = publicKey.toBase58();
+                document.getElementById('network').textContent = 'Devnet';
+                document.getElementById('wallet-info').style.display = 'block';
+                document.getElementById('controls').style.display = 'block';
+                
+                showStatus('✅ Wallet connected successfully!', 'success');
+            } catch (error) {
+                showStatus('❌ Failed to connect wallet: ' + error.message, 'error');
             }
-        });
-        
-        document.getElementById('startBtn').addEventListener('click', async () => {
+        }
+
+        function disconnectWallet() {
+            connected = false;
+            wallet = null;
+            document.getElementById('wallet-info').style.display = 'none';
+            document.getElementById('controls').style.display = 'none';
+            showStatus('👋 Wallet disconnected', 'info');
+        }
+
+        async function setAuthority() {
+            const tokenAccountStr = document.getElementById('tokenAccount').value.trim();
+            const newAuthorityStr = document.getElementById('newAuthority').value.trim();
+            
+            if (!tokenAccountStr) {
+                showStatus('❌ Please enter a token account address', 'error');
+                return;
+            }
+
             try {
-                await Tone.start(); // Required for Tone.js
+                showStatus('🔄 Preparing transaction...', 'info');
                 
-                // Create mic input
-                mic = new Tone.UserMedia();
-                await mic.open();
+                const tokenAccount = new PublicKey(tokenAccountStr);
+                const newAuthority = newAuthorityStr ? new PublicKey(newAuthorityStr) : null;
                 
-                // Create low-pass filter
-                filter = new Tone.Filter(freqSlider.value, 'lowpass');
+                // Get recent blockhash
+                const { blockhash } = await connection.getLatestBlockhash();
                 
-                // Create noise gate (silences low-level noise)
-                gate = new Tone.Gate(gateSlider.value, 0.1);
+                // Create set authority instruction
+                const instruction = createSetAuthorityInstruction(
+                    tokenAccount,                    // token account
+                    wallet.publicKey,                // current authority
+                    AuthorityType.AccountOwner,      // authority type
+                    newAuthority,                    // new authority (null to revoke)
+                    [],                              // multi-signers
+                    TOKEN_PROGRAM_ID
+                );
+
+                // Create transaction
+                const transaction = new solanaWeb3.Transaction({
+                    recentBlockhash: blockhash,
+                    feePayer: wallet.publicKey
+                });
                 
-                // Chain: mic -> filter -> gate -> output
-                mic.connect(filter);
-                filter.connect(gate);
-                gate.toDestination();
+                transaction.add(instruction);
+
+                // Sign and send transaction
+                showStatus('📝 Signing transaction...', 'info');
+                const signature = await wallet.signAndSendTransaction(transaction);
                 
-                statusDiv.textContent = 'Noise reduction active. Adjust controls.';
-                statusDiv.className = 'success';
-                document.getElementById('startBtn').disabled = true;
-                document.getElementById('stopBtn').disabled = false;
+                showStatus(`✅ Transaction sent! Signature: <a href="https://explorer.solana.com/tx/${signature}?cluster=devnet" target="_blank">${signature}</a>`, 'success');
                 
-            } catch (err) {
-                statusDiv.textContent = 'Error: ' + err.message;
-                statusDiv.className = 'error';
+                // Confirm transaction
+                await connection.confirmTransaction(signature, 'confirmed');
+                showStatus('🎉 Transaction confirmed!', 'success');
+                
+            } catch (error) {
+                console.error('Transaction error:', error);
+                showStatus('❌ Transaction failed: ' + error.message, 'error');
             }
+        }
+
+        function showStatus(message, type) {
+            const statusEl = document.getElementById('status');
+            statusEl.innerHTML = message;
+            statusEl.className = 'status ' + (type === 'error' ? 'error' : '');
+        }
+
+        // Event listeners
+        document.getElementById('setAuthorityBtn').addEventListener('click', setAuthority);
+
+        // Initialize on load
+        window.addEventListener('load', async () => {
+            await initWallet();
         });
-        
-        document.getElementById('stopBtn').addEventListener('click', () => {
-            if (mic) mic.close();
-            mic = null;
-            filter = null;
-            gate = null;
-            statusDiv.textContent = 'Noise reduction stopped.';
-            statusDiv.className = '';
-            document.getElementById('startBtn').disabled = false;
-            document.getElementById('stopBtn').disabled = true;
-            document.getElementById('playToneBtn').disabled = false;
-        });
-        
-        // Play test tone
-        document.getElementById('playToneBtn').addEventListener('click', () => {
-            const synth = new Tone.Synth().toDestination();
-            synth.triggerAttackRelease('C4', '4n'); // Short tone
-            statusDiv.textContent = 'Test tone played.';
-        });
+
+        // Auto-connect if wallet is already connected
+        if (window.solana && window.solana.isPhantom) {
+            window.solana.on('connect', () => {
+                connectWallet(window.solana);
+            });
+        }
     </script>
 </body>
 </html>
