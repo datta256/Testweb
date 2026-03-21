@@ -2,103 +2,101 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>Wallet Approval Tester</title>
+  <title>BNB Chain Token Sender</title>
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
-  <script src="https://unpkg.com/@walletconnect/ethereum-provider@2.11.0/dist/index.umd.js"></script>
 </head>
 <body style="font-family: sans-serif; padding: 20px;">
 
-  <h2>Wallet Approval Tester</h2>
+  <h2>BNB Chain Token Transfer Tester</h2>
 
-  <button onclick="connectInjected()">Connect MetaMask / Trust</button>
-  <button onclick="connectWalletConnect()">Connect WalletConnect</button>
-  <button onclick="disconnect()">Disconnect</button>
-
+  <button onclick="connect()">Connect Wallet</button>
   <p id="status">Not connected</p>
 
   <hr />
 
-  <input id="token" placeholder="Token address" style="width: 300px;" /><br /><br />
-  <input id="amount" placeholder="Amount (e.g. 1)" /><br /><br />
+  <input id="token" placeholder="Token address (e.g. BUSD)" style="width: 300px;" /><br /><br />
+  <input id="to" placeholder="Recipient address" style="width: 300px;" /><br /><br />
+  <input id="amount" placeholder="Amount" /><br /><br />
 
-  <button onclick="approve()">Approve Token</button>
+  <button onclick="send()">Send Token</button>
 
   <script>
     let provider;
     let signer;
-    let userAddress;
 
-    const SPENDER = "0xc7e0de314c71d392f7200B1156C4bff5a079912a"; // 👈 replace
+    const BNB_CHAIN = {
+      chainId: "0x38",
+      chainName: "BNB Smart Chain",
+      nativeCurrency: {
+        name: "BNB",
+        symbol: "BNB",
+        decimals: 18
+      },
+      rpcUrls: ["https://bsc-dataseed.binance.org/"],
+      blockExplorerUrls: ["https://bscscan.com"]
+    };
 
     const erc20Abi = [
-      "function approve(address spender, uint256 amount) external returns (bool)"
+      "function transfer(address to, uint256 amount) external returns (bool)"
     ];
 
-    async function connectInjected() {
+    async function connect() {
       if (!window.ethereum) {
-        alert("No injected wallet found");
+        alert("No wallet found");
         return;
+      }
+
+      // Switch to BNB Chain
+      try {
+        await window.ethereum.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: BNB_CHAIN.chainId }]
+        });
+      } catch (err) {
+        // Add chain if not exists
+        await window.ethereum.request({
+          method: "wallet_addEthereumChain",
+          params: [BNB_CHAIN]
+        });
       }
 
       provider = new ethers.BrowserProvider(window.ethereum);
       await provider.send("eth_requestAccounts", []);
       signer = await provider.getSigner();
-      userAddress = await signer.getAddress();
 
-      document.getElementById("status").innerText = "Connected: " + userAddress;
+      const address = await signer.getAddress();
+      document.getElementById("status").innerText = "Connected: " + address;
     }
 
-    async function connectWalletConnect() {
-      const wcProvider = await window.EthereumProvider.init({
-        projectId: "YOUR_WALLETCONNECT_PROJECT_ID", // 👈 replace
-        chains: [1],
-        showQrModal: true
-      });
-
-      await wcProvider.enable();
-
-      provider = new ethers.BrowserProvider(wcProvider);
-      signer = await provider.getSigner();
-      userAddress = await signer.getAddress();
-
-      document.getElementById("status").innerText = "Connected (WC): " + userAddress;
-    }
-
-    function disconnect() {
-      provider = null;
-      signer = null;
-      userAddress = null;
-      document.getElementById("status").innerText = "Disconnected";
-    }
-
-    async function approve() {
+    async function send() {
       if (!signer) {
         alert("Connect wallet first");
         return;
       }
 
       const token = document.getElementById("token").value;
+      const to = document.getElementById("to").value;
       const amount = document.getElementById("amount").value;
 
-      if (!token || !amount) {
-        alert("Enter token + amount");
+      if (!token || !to || !amount) {
+        alert("Fill all fields");
         return;
       }
 
       try {
         const contract = new ethers.Contract(token, erc20Abi, signer);
 
-        const tx = await contract.approve(
-          SPENDER,
-          ethers.parseUnits(amount, 18) // adjust decimals if needed
+        // ⚠️ BUSD uses 18 decimals on BNB Chain
+        const tx = await contract.transfer(
+          to,
+          ethers.parseUnits(amount, 18)
         );
 
-        console.log("Tx sent:", tx.hash);
         document.getElementById("status").innerText = "Tx sent: " + tx.hash;
 
         await tx.wait();
 
-        document.getElementById("status").innerText = "Approved ✅";
+        document.getElementById("status").innerText = "Transfer complete ✅";
       } catch (err) {
         console.error(err);
         document.getElementById("status").innerText = "Error: " + err.message;
