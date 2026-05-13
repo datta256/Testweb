@@ -1,144 +1,419 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>BNB Chain TX Sign vs Send Tester</title>
-  <script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Procedural Brush Scatterer</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: sans-serif;
+            background-color: #1a1a1a;
+            color: #fff;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        #ui-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 15px;
+            border-radius: 8px;
+            max-width: 320px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            border: 1px solid #444;
+        }
+        h3 { margin-top: 0; color: #4af; font-size: 16px; border-bottom: 1px solid #333; padding-bottom: 5px;}
+        .control-group {
+            margin-bottom: 12px;
+        }
+        label {
+            display: block;
+            font-size: 12px;
+            margin-bottom: 4px;
+            color: #ccc;
+        }
+        input[type="file"] {
+            display: block;
+            width: 100%;
+            background: #222;
+            color: #fff;
+            padding: 5px;
+            border: 1px solid #555;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 11px;
+            cursor: pointer;
+        }
+        input[type="range"] {
+            width: 100%;
+            accent-color: #4af;
+        }
+        .stats {
+            font-size: 11px;
+            color: #888;
+            margin-top: 5px;
+        }
+        button {
+            width: 100%;
+            background: #d9534f;
+            color: white;
+            border: none;
+            padding: 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+        button:hover { background: #c9302c; }
+        #instructions {
+            position: absolute;
+            bottom: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            background: rgba(0,0,0,0.7);
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 13px;
+            pointer-events: none;
+            text-align: center;
+            border: 1px solid #555;
+        }
+    </style>
+
+    <!-- Include Three.js and GLTFLoader from unpkg CDN -->
+    <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+    <script src="unpkg.com"></script>
+    <script src="unpkg.com"></script>
 </head>
-<body style="font-family: sans-serif; padding: 20px;">
+<body>
 
-  <h2>BNB Chain – Sign vs Send (BUSD Transfer)</h2>
+    <div id="canvas-container"></div>
 
-  <button onclick="connect()">Connect Wallet</button>
-  <p id="status">Not connected</p>
+    <div id="ui-panel">
+        <h3>Procedural 3D Scatter Engine</h3>
+        
+        <div class="control-group">
+            <label>1. Upload GLB Assets (Select Multiple):</label>
+            <input type="file" id="glb-uploader" accept=".glb" multiple>
+            <div class="stats" id="assets-count">Loaded: 0 assets (Using fallbacks)</div>
+        </div>
 
-  <hr />
+        <div class="control-group">
+            <label>2. Upload Custom Texture Overwrite (Image):</label>
+            <input type="file" id="texture-uploader" accept="image/*">
+            <div class="stats" id="texture-status">Texture: Original Asset Textures</div>
+        </div>
 
-  <input id="to" placeholder="Recipient address" style="width: 300px;" /><br /><br />
-  <input id="amount" placeholder="Amount (e.g. 1)" /><br /><br />
+        <div class="control-group">
+            <label>Brush Radius (Spacing Control):</label>
+            <input type="range" id="brush-radius" min="0.5" max="5" step="0.1" value="1.5">
+        </div>
 
-  <button onclick="signOnly()">Sign TX (no broadcast)</button>
-  <button onclick="sendTx()">Send TX (normal)</button>
+        <div class="control-group">
+            <label>Scale Variation Randomness:</label>
+            <input type="range" id="scale-random" min="0" max="1" step="0.1" value="0.5">
+        </div>
 
-  <script>
-    let provider;
-    let signer;
-    let user;
+        <button id="clear-btn">Clear All Generated Objects</button>
+    </div>
 
-    const BUSD = "0xe9e7cea3dedca5984780bafc599bd69add087d56";
+    <div id="instructions">
+        <strong>Left Click + Drag</strong> on grid to build | <strong>Right Click + Drag</strong> to rotate camera
+    </div>
 
-    const BNB_CHAIN = {
-      chainId: "0x38",
-      chainName: "BNB Smart Chain",
-      nativeCurrency: {
-        name: "BNB",
-        symbol: "BNB",
-        decimals: 18
-      },
-      rpcUrls: ["https://bsc-dataseed.binance.org/"],
-      blockExplorerUrls: ["https://bscscan.com"]
-    };
+    <script>
+        // --- App State ---
+        let scene, camera, renderer, controls;
+        let loadedMeshes = []; // Stores user uploaded asset templates
+        let customTexture = null;
+        let groundPlane;
+        let raycaster, mouse;
+        let isDragging = false;
+        let lastPlacementPosition = new THREE.Vector3();
 
-    async function connect() {
-      if (!window.ethereum) {
-        alert("No wallet found");
-        return;
-      }
+        // UI Selectors
+        const glbUploader = document.getElementById('glb-uploader');
+        const textureUploader = document.getElementById('texture-uploader');
+        const brushRadiusInput = document.getElementById('brush-radius');
+        const scaleRandomInput = document.getElementById('scale-random');
+        const clearBtn = document.getElementById('clear-btn');
+        const assetsCountText = document.getElementById('assets-count');
+        const textureStatusText = document.getElementById('texture-status');
 
-      // switch to BNB chain
-      try {
-        await window.ethereum.request({
-          method: "wallet_switchEthereumChain",
-          params: [{ chainId: BNB_CHAIN.chainId }]
-        });
-      } catch (err) {
-        await window.ethereum.request({
-          method: "wallet_addEthereumChain",
-          params: [BNB_CHAIN]
-        });
-      }
+        init();
+        animate();
 
-      provider = new ethers.BrowserProvider(window.ethereum);
-      await provider.send("eth_requestAccounts", []);
-      signer = await provider.getSigner();
-      user = await signer.getAddress();
+        function init() {
+            // Scene setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a1a);
+            scene.fog = new THREE.FogExp2(0x1a1a1a, 0.015);
 
-      document.getElementById("status").innerText =
-        "Connected: " + user;
-    }
+            // Camera setup
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 15, 25);
 
-    function encodeTransfer(to, amount) {
-      const iface = new ethers.Interface([
-        "function transfer(address to, uint256 amount)"
-      ]);
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-      return iface.encodeFunctionData("transfer", [
-        to,
-        ethers.parseUnits(amount, 18) // BUSD = 18 decimals
-      ]);
-    }
+            // Controls setup (Remap Left Click to allow painting)
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.mouseButtons = {
+                LEFT: null, // Freed up for structural dragging
+                MIDDLE: THREE.MOUSE.DOLLY,
+                RIGHT: THREE.MOUSE.ROTATE
+            };
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.target.set(0, 0, 0);
 
-    async function signOnly() {
-      if (!signer) return alert("Connect first");
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
 
-      const to = document.getElementById("to").value;
-      const amount = document.getElementById("amount").value;
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(20, 40, 20);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.bias = -0.0005;
+            scene.add(dirLight);
 
-      if (!to || !amount) return alert("Fill fields");
+            // Grid & Ground Interaction Surface
+            const gridHelper = new THREE.GridHelper(100, 100, 0x444444, 0x222222);
+            gridHelper.position.y = 0.01; 
+            scene.add(gridHelper);
 
-      try {
-        const data = encodeTransfer(to, amount);
+            const groundGeo = new THREE.PlaneGeometry(100, 100);
+            const groundMat = new THREE.MeshStandardMaterial({ color: 0x252525, roughness: 0.8 });
+            groundPlane = new THREE.Mesh(groundGeo, groundMat);
+            groundPlane.rotation.x = -Math.PI / 2;
+            groundPlane.receiveShadow = true;
+            scene.add(groundPlane);
 
-        const tx = {
-          to: BUSD,
-          data: data,
-          value: 0,
-          chainId: 56
-        };
+            // Interaction Utilities
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
 
-        const signed = await signer.signTransaction(tx);
+            // Native Basic Fallbacks (Boxes/Prisms) if no files are uploaded
+            createFallbackAssets();
 
-        console.log("SIGNED TX:", signed);
-        document.getElementById("status").innerText =
-          "Signed (check console)";
-      } catch (err) {
-        console.error(err);
-        document.getElementById("status").innerText =
-          "Sign error: " + err.message;
-      }
-    }
+            // Event Listeners
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('mousedown', onMouseDown);
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
 
-    async function sendTx() {
-      if (!signer) return alert("Connect first");
+            // UI Listeners
+            glbUploader.addEventListener('change', handleGlbUpload);
+            textureUploader.addEventListener('change', handleTextureUpload);
+            clearBtn.addEventListener('click', clearGeneratedObjects);
+        }
 
-      const to = document.getElementById("to").value;
-      const amount = document.getElementById("amount").value;
+        // Generate clean procedural shapes as default geometry placeholders
+        function createFallbackAssets() {
+            const fallbackGeometries = [
+                new THREE.BoxGeometry(1, 2, 1),
+                new THREE.CylinderGeometry(0, 0.7, 2, 5),
+                new THREE.SphereGeometry(0.8, 8, 8)
+            ];
+            
+            fallbackGeometries.forEach((geo) => {
+                geo.translate(0, 1, 0); // Align origin point to mesh base
+                const mat = new THREE.MeshStandardMaterial({ color: 0x777777 });
+                const mesh = new THREE.Mesh(geo, mat);
+                loadedMeshes.push(mesh);
+            });
+        }
 
-      if (!to || !amount) return alert("Fill fields");
+        // Process custom .glb file uploads via arrayBuffer readers
+        function handleGlbUpload(e) {
+            const files = e.target.files;
+            if (!files.length) return;
 
-      try {
-        const data = encodeTransfer(to, amount);
+            // Wipe out default primitive fallback arrays on first intentional load
+            if(glbUploader.dataset.dirty !== "true") {
+                loadedMeshes = [];
+                glbUploader.dataset.dirty = "true";
+            }
 
-        const tx = await signer.sendTransaction({
-          to: BUSD,
-          data: data,
-          value: 0
-        });
+            const loader = new THREE.GLTFLoader();
+            let loadedCount = 0;
 
-        document.getElementById("status").innerText =
-          "Sent: " + tx.hash;
+            Array.from(files).forEach(file => {
+                const reader = new FileReader();
+                reader.readAsArrayBuffer(file);
+                reader.onload = function (event) {
+                    const contents = event.target.result;
+                    loader.parse(contents, '', (gltf) => {
+                        const rootGroup = gltf.scene;
+                        
+                        // Normalize scale & anchor bounding point to base floor level
+                        const box = new THREE.Box3().setFromObject(rootGroup);
+                        const size = box.getSize(new THREE.Vector3());
+                        const center = box.getCenter(new THREE.Vector3());
+                        
+                        rootGroup.position.set(-center.x, -box.min.y, -center.z); // Adjust pivot to base bottom
+                        
+                        const normalizedWrapper = new THREE.Group();
+                        normalizedWrapper.add(rootGroup);
 
-        await tx.wait();
+                        loadedMeshes.push(normalizedWrapper);
+                        loadedCount++;
+                        assetsCountText.innerText = `Loaded: ${loadedMeshes.length} custom assets`;
+                    }, (err) => console.error("GLTF Parse Error", err));
+                };
+            });
+        }
 
-        document.getElementById("status").innerText =
-          "Confirmed ✅";
-      } catch (err) {
-        console.error(err);
-        document.getElementById("status").innerText =
-          "Send error: " + err.message;
-      }
-    }
-  </script>
+        // Process custom override texture wrapper mapping
+        function handleTextureUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
 
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = function(event) {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = function() {
+                    customTexture = new THREE.Texture(img);
+                    customTexture.needsUpdate = true;
+                    textureStatusText.innerText = `Texture: Loaded (${file.name})`;
+                    textureStatusText.style.color = "#4af";
+                }
+            }
+        }
+
+        // Core Procedural Generation Spawns
+        function spawnProceduralAsset(targetPosition) {
+            if (loadedMeshes.length === 0) return;
+
+            // 1. Procedural Selection (Randomly pick from available asset variants)
+            const randomIndex = Math.floor(Math.random() * loadedMeshes.length);
+            const template = loadedMeshes[randomIndex];
+            const instance = template.clone();
+
+            // 2. Apply Override Textures dynamically across children geometry
+            if (customTexture) {
+                instance.traverse((child) => {
+                    if (child.isMesh) {
+                        child.material = new THREE.MeshStandardMaterial({
+                            map: customTexture,
+                            roughness: 0.6,
+                            metalness: 0.1
+                        });
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+            } else {
+                instance.traverse((child) => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+            }
+
+            // 3. Procedural Random Variation Transforms
+            const scaleRandomness = parseFloat(scaleRandomInput.value);
+            const baseScale = 1.0;
+            // Generates random variance distribution rules
+            const randomScaleOffset = (Math.random() - 0.5) * 2 * scaleRandomness * 0.5;
+            const finalScale = Math.max(0.2, baseScale + randomScaleOffset);
+            
+            instance.scale.set(finalScale, finalScale, finalScale);
+            
+            // Full 360-degree rotational orientation scattering
+            instance.rotation.y = Math.random() * Math.PI * 2; 
+
+            // Position execution matching brush point
+            instance.position.copy(targetPosition);
+            instance.name = "procedural_spawn";
+            
+            scene.add(instance);
+        }
+
+        // Raycast capture loop
+        function checkAndGenerate(e) {
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(groundPlane);
+
+            if (intersects.length > 0) {
+                const intersectPoint = intersects[0].point;
+                const minSpacing = parseFloat(brushRadiusInput.value);
+
+                // Ensure distance threshold is met before generating another object
+                if (lastPlacementPosition.distanceTo(intersectPoint) > minSpacing) {
+                    spawnProceduralAsset(intersectPoint);
+                    lastPlacementPosition.copy(intersectPoint);
+                }
+            }
+        }
+
+        function onMouseDown(e) {
+            if (e.button === 0) { // Left Click only
+                isDragging = true;
+                // Force initial placement anchor calculation
+                lastPlacementPosition.set(Infinity, Infinity, Infinity); 
+                checkAndGenerate(e);
+            }
+        }
+
+        function onMouseMove(e) {
+            if (isDragging) {
+                checkAndGenerate(e);
+            }
+        }
+
+        function onMouseUp(e) {
+            if (e.button === 0) {
+                isDragging = false;
+            }
+        }
+
+        function clearGeneratedObjects() {
+            const targets = [];
+            scene.traverse((child) => {
+                if (child.name === "procedural_spawn") {
+                    targets.push(child);
+                }
+            });
+            targets.forEach(obj => scene.remove(obj));
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+    </script>
 </body>
 </html>
+
