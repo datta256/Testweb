@@ -2,29 +2,31 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minimal 3D GLB Viewer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Fixed Minimal 3D GLB Viewer</title>
     <style>
         body {
             margin: 0; padding: 0; overflow: hidden;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background: #1a1a1e; color: #eee;
+            user-select: none; -webkit-user-select: none;
         }
         #canvas-container { width: 100vw; height: 100vh; position: absolute; top:0; left:0; z-index:1; }
         
+        /* Drag Overlay layer with responsive visibility fixes */
         #drop-zone {
             position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
             z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center;
-            background: rgba(26, 26, 30, 0.85); border: 3px dashed #4af; box-sizing: border-box;
+            background: rgba(26, 26, 30, 0.9); border: 3px dashed #4af; box-sizing: border-box;
             transition: opacity 0.2s ease; pointer-events: none; opacity: 1;
         }
-        #drop-zone.hidden { opacity: 0; pointer-events: none; }
+        #drop-zone.hidden { opacity: 0 !important; display: none !important; pointer-events: none !important; }
         #drop-zone p { margin: 10px 0 0 0; font-size: 16px; color: #4af; font-weight: bold; }
 
         #control-panel {
             position: absolute; top: 15px; left: 15px; z-index: 10;
-            background: rgba(30, 30, 35, 0.9); padding: 15px; border-radius: 10px;
-            width: 250px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); border: 1px solid #333;
+            background: rgba(30, 30, 35, 0.95); padding: 15px; border-radius: 10px;
+            width: 260px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); border: 1px solid #333;
         }
         h3 { margin: 0 0 10px 0; color: #fff; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
         .control-item { margin-bottom: 12px; }
@@ -44,7 +46,7 @@
         #model-info { font-size: 11px; color: #888; margin-top: 5px; line-height: 1.4; word-break: break-all; }
     </style>
     
-    <!-- Three.js Core, OrbitControls, and GLTFLoader CDN hooks -->
+    <!-- Stable Production CDN Dependencies -->
     <script src="unpkg.com"></script>
     <script src="unpkg.com"></script>
     <script src="unpkg.com"></script>
@@ -104,11 +106,11 @@
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x1a1a1e);
 
-            // Optics View Setup
+            // Camera Setup
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 1000);
             camera.position.set(0, 2, 5);
 
-            // Renderer Configuration
+            // Renderer Setup
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -116,13 +118,13 @@
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
             document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-            // Camera Controls Implementation
+            // Camera Controls
             controls = new THREE.OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
             controls.dampingFactor = 0.05;
 
-            // Lighting Setup
-            hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
+            // Lights
+            hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
             scene.add(hemiLight);
 
             dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
@@ -130,29 +132,37 @@
             dirLight.castShadow = true;
             scene.add(dirLight);
 
-            // Base Interaction Floor Grid
+            // Grid Layout Plane
             const grid = new THREE.GridHelper(20, 20, 0x44444a, 0x2d2d35);
             grid.position.y = -0.01;
             scene.add(grid);
 
-            // Setup Listeners for Drag and Drop Actions
+            // Desktop Drag & Drop Listeners
             setupDragAndDrop();
 
-            // Dom Component Wireups
-            fileInput.addEventListener('change', (e) => loadGlbFile(e.target.files[0]));
+            // Native Input Hooks
+            fileInput.addEventListener('change', (e) => {
+                if(e.target.files.length > 0) {
+                    loadGlbFile(e.target.files[0]);
+                }
+            });
+            
             wireframeToggle.addEventListener('change', toggleWireframeMode);
             lightingSelect.addEventListener('change', alterLightingEnvironment);
             resetCamBtn.addEventListener('click', fitCameraToModel);
             window.addEventListener('resize', onWindowResize);
         }
 
-        // File loading extraction parser
+        // Standardized Extraction Engine Loader
         function loadGlbFile(file) {
             if (!file) return;
+            
+            // CRITICAL MOBILE FIX: Forcefully break visibility structures instantly
+            dropZone.style.display = 'none';
             dropZone.classList.add('hidden');
+            
             modelInfo.innerText = `Loading: ${file.name}...`;
 
-            // Flush old active model structures out of memory bounds
             if (currentModel) scene.remove(currentModel);
 
             const reader = new FileReader();
@@ -162,17 +172,20 @@
                 gltfLoader.parse(event.target.result, '', (gltf) => {
                     currentModel = gltf.scene;
 
-                    // Automatically configuration shadows across all structural children meshes
                     currentModel.traverse(node => {
                         if (node.isMesh) {
                             node.castShadow = true;
                             node.receiveShadow = true;
+                            
+                            // Material shader fix for unlit missing meshes
+                            if(node.material) {
+                                node.material.needsUpdate = true;
+                            }
                         }
                     });
 
                     scene.add(currentModel);
                     
-                    // Display model details and snap camera straight to object bounding volume box centers
                     modelInfo.innerText = `File: ${file.name}\nSize: ${(file.size / (1024 * 1024)).toFixed(2)} MB`;
                     wireframeToggle.checked = false; 
                     fitCameraToModel();
@@ -183,7 +196,7 @@
             };
         }
 
-        // Calculations to safely auto-frame models of any size cleanly inside the display viewports
+        // Camera Framing Adaptation Box Calculator
         function fitCameraToModel() {
             if (!currentModel) return;
 
@@ -191,16 +204,16 @@
             const size = box.getSize(new THREE.Vector3());
             const center = box.getCenter(new THREE.Vector3());
 
-            // Shift object pivot directly over grid origin center coordinates
+            // Center object coordinates over scene grid origin points
             currentModel.position.x += (currentModel.position.x - center.x);
             currentModel.position.z += (currentModel.position.z - center.z);
-            currentModel.position.y += (-box.min.y); // Anchor bottom edge cleanly to grid floor surface level
+            currentModel.position.y += (-box.min.y); // Lock model bottom straight to floor level
 
             const maxDim = Math.max(size.x, size.y, size.z);
             const fov = camera.fov * (Math.PI / 180);
-            let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.5; // Back out camera far enough to avoid frame clips
+            let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.6;
 
-            camera.position.set(cameraZ, maxDim * 1.2, cameraZ);
+            camera.position.set(cameraZ, maxDim * 1.3, cameraZ);
             controls.target.set(0, maxDim / 2, 0);
             camera.lookAt(0, maxDim / 2, 0);
             controls.update();
@@ -219,28 +232,32 @@
         function alterLightingEnvironment() {
             const style = lightingSelect.value;
             if (style === 'studio') {
-                hemiLight.intensity = 1.0;
+                hemiLight.intensity = 1.2;
                 dirLight.intensity = 1.5;
                 dirLight.position.set(5, 10, 7);
             } else if (style === 'dramatic') {
                 hemiLight.intensity = 0.2;
-                dirLight.intensity = 2.5;
-                dirLight.position.set(-2, 8, -4);
+                dirLight.intensity = 2.8;
+                dirLight.position.set(-3, 6, -3);
             } else if (style === 'ambient') {
-                hemiLight.intensity = 2.0;
+                hemiLight.intensity = 2.2;
                 dirLight.intensity = 0.0;
             }
         }
 
         function setupDragAndDrop() {
+            // Drop zone helper tracking controls for desktop computers only
             window.addEventListener('dragover', (e) => {
                 e.preventDefault();
+                dropZone.style.display = 'flex';
                 dropZone.classList.remove('hidden');
             });
             window.addEventListener('dragleave', (e) => {
-                // Only hide if cursor leaves viewport completely
                 if (e.clientY <= 0 || e.clientX <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
-                    if(currentModel) dropZone.classList.add('hidden');
+                    if(currentModel) {
+                        dropZone.style.display = 'none';
+                        dropZone.classList.add('hidden');
+                    }
                 }
             });
             window.addEventListener('drop', (e) => {
