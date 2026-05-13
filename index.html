@@ -3,51 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Procedural City & Village Auto-Generator</title>
+    <title>Procedural Town Auto-Generator & GLTF Exporter</title>
     <style>
         body {
             margin: 0; padding: 0; overflow: hidden;
-            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-            background: #111; color: #eee;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #111116; color: #eee;
         }
         #canvas-container { width: 100vw; height: 100vh; position: absolute; top:0; left:0; z-index:1; }
         
         #control-sidebar {
             position: absolute; top: 15px; left: 15px; z-index: 10;
-            background: rgba(20, 20, 20, 0.95); padding: 15px; border-radius: 12px;
+            background: rgba(20, 20, 25, 0.95); padding: 15px; border-radius: 12px;
             width: 290px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);
-            border: 1px solid #333; backdrop-filter: blur(8px);
+            border: 1px solid #3c3c4a; backdrop-filter: blur(8px);
         }
-        h3 { margin: 0 0 12px 0; color: #4af; font-size: 15px; text-transform: uppercase; letter-spacing: 0.5px; }
-        .section { margin-bottom: 15px; border-bottom: 1px solid #222; padding-bottom: 12px; }
+        h3 { margin: 0 0 12px 0; color: #4af; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .section { margin-bottom: 15px; border-bottom: 1px solid #2a2a35; padding-bottom: 12px; }
         .section:last-child { border: none; margin: 0; padding: 0; }
         label { display: block; font-size: 11px; color: #aaa; margin-bottom: 5px; font-weight: bold; }
         
-        input[type="file"] {
-            display: block; width: 100%; background: #222; color: #fff;
-            padding: 8px; border: 1px solid #444; border-radius: 6px; font-size: 11px; box-sizing: border-box;
-        }
-        select {
-            width: 100%; background: #222; color: #fff; padding: 8px;
-            border: 1px solid #444; border-radius: 6px; font-size: 12px; outline: none;
+        input[type="file"], select {
+            width: 100%; background: #1a1a22; color: #fff; padding: 8px;
+            border: 1px solid #444; border-radius: 6px; font-size: 12px; box-sizing: border-box; outline: none;
+            margin-bottom: 4px;
         }
         
-        .gen-btn {
-            width: 100%; background: #4af; color: #000; border: none;
-            padding: 12px; border-radius: 8px; font-weight: bold; font-size: 13px;
-            cursor: pointer; transition: background 0.2s; text-transform: uppercase;
+        .btn {
+            width: 100%; border: none; padding: 12px; border-radius: 8px; 
+            font-weight: bold; font-size: 12px; cursor: pointer; text-transform: uppercase;
+            margin-bottom: 8px; display: block; box-sizing: border-box; text-align: center;
         }
+        .gen-btn { background: #4af; color: #000; }
         .gen-btn:hover { background: #39e; }
+        .export-btn { background: #2ed573; color: #000; }
+        .export-btn:hover { background: #26af5f; }
         
-        .stats { font-size: 11px; color: #666; margin-top: 4px; }
-        #loading-overlay {
-            position: absolute; top: 15px; right: 15px; z-index: 10;
-            background: rgba(0,0,0,0.8); padding: 8px 15px; border-radius: 20px;
-            font-size: 11px; font-weight: bold; color: #ffb703;
-            border: 1px solid #444; display: none;
-        }
+        .stats { font-size: 11px; color: #888; margin-top: 4px; line-height: 1.3; }
     </style>
-    <!-- Dependencies -->
+    
+    <!-- FIXED AND COMPLETE UNPKG DEPENDENCIES (THREE, ORBITCONTROLS, GLTFLOADER, GLTFEXPORTER) -->
+    <script src="unpkg.com"></script>
     <script src="unpkg.com"></script>
     <script src="unpkg.com"></script>
     <script src="unpkg.com"></script>
@@ -55,254 +51,229 @@
 <body>
 
     <div id="canvas-container"></div>
-    <div id="loading-overlay">GENERATING GRID LAYOUT...</div>
 
     <div id="control-sidebar">
         <div class="section">
-            <h3>1. Feed Assets</h3>
-            <label>Upload 3D Models (.glb format):</label>
+            <h3>1. Feed Custom Assets</h3>
+            <label>Upload 3D Models (.glb):</label>
             <input type="file" id="glb-uploader" accept=".glb" multiple>
-            <div class="stats" id="asset-count">0 custom meshes loaded. Using system structural primitives.</div>
+            <div class="stats" id="asset-count">0 custom meshes loaded.<br>Using colored system blocks.</div>
         </div>
 
         <div class="section">
             <h3>2. Layout Parameters</h3>
-            <label>Zoning Archetype Profile:</label>
+            <label>Zoning Profile Architecture:</label>
             <select id="biome-selector">
-                <option value="CITY">Metropolis (High Density Grid, Uniform Heights)</option>
-                <option value="VILLAGE">Rural Village (Organic Scattered Clusters, Varied Scales)</option>
-                <option value="OUTPOST">Industrial Outpost (Sparse, Rigid Linear Rows)</option>
+                <option value="CITY">Metropolis Grid</option>
+                <option value="VILLAGE">Organic Village Clusters</option>
             </select>
         </div>
 
-        <button class="gen-btn" id="generate-trigger">Auto-Generate Settlement</button>
+        <div class="section">
+            <button class="btn gen-btn" id="generate-trigger">Auto-Generate Town</button>
+            <button class="btn export-btn" id="export-trigger">Export Whole Scene (.gltf)</button>
+        </div>
     </div>
 
     <script>
         let scene, camera, renderer, controls;
-        let assetTemplates = []; // Built meshes ready for duplication loops
-        const container = document.getElementById('canvas-container');
-        const loaderStatus = document.getElementById('loading-overlay');
-
-        // Layout Constants
-        const GRID_SIZE = 24; // 24x24 sector block matrix
-        const SPACING = 3.5;  // Distance unit intervals between coordinates
+        let assetTemplates = []; 
+        let currentGenerationGroup = null; // Container keeping only generated items isolated for export
+        
+        const GRID_SIZE = 12; 
+        const SPACING = 5.0;  
 
         init();
         animate();
 
         function init() {
-            // Context & Core Scene Init
+            // Scene & Environment
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x0a0a0c);
-            scene.fog = new THREE.FogExp2(0x0a0a0c, 0.008);
+            scene.background = new THREE.Color(0x13131a);
+            scene.fog = new THREE.FogExp2(0x13131a, 0.01);
 
-            // Optics View Configuration
+            // View Engine Optics
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
-            camera.position.set(45, 35, 65);
+            camera.position.set(35, 35, 55);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.shadowMap.enabled = true;
-            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-            container.appendChild(renderer.domElement);
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-            // Mechanics Control Configuration
             controls = new THREE.OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
             controls.dampingFactor = 0.05;
-            controls.maxPolarAngle = Math.PI / 2 - 0.05; // Prevent breaking past floor
 
-            // Atmosphere Configuration
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            // Lights Setup
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
             scene.add(ambientLight);
 
-            const sun = new THREE.DirectionalLight(0xfffaed, 1.2);
-            sun.position.set(100, 150, 50);
+            const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+            sun.position.set(40, 80, 20);
             sun.castShadow = true;
-            sun.shadow.mapSize.width = 2048;
-            sun.shadow.mapSize.height = 2048;
-            sun.shadow.camera.near = 0.5;
-            sun.shadow.camera.far = 300;
-            const d = 60;
-            sun.shadow.camera.left = -d; sun.shadow.camera.right = d;
-            sun.shadow.camera.top = d; sun.shadow.camera.bottom = -d;
             scene.add(sun);
 
-            // Infrastructure Surface Planes
-            const groundGeo = new THREE.PlaneGeometry(200, 200);
-            const groundMat = new THREE.MeshStandardMaterial({ color: 0x151518, roughness: 0.85 });
+            // Static Base Ground Map Plane (We don't export this to keep files clean)
+            const groundGeo = new THREE.PlaneGeometry(150, 150);
+            const groundMat = new THREE.MeshStandardMaterial({ color: 0x1c1c24, roughness: 0.8 });
             const ground = new THREE.Mesh(groundGeo, groundMat);
             ground.rotation.x = -Math.PI / 2;
             ground.receiveShadow = true;
             scene.add(ground);
 
-            // System Structural Shapes Fallbacks
+            const grid = new THREE.GridHelper(150, 30, 0x3c3c4a, 0x22222b);
+            grid.position.y = 0.01;
+            scene.add(grid);
+
+            // Initialize isolated generation node group wrapper
+            currentGenerationGroup = new THREE.Group();
+            scene.add(currentGenerationGroup);
+
+            // Generate bright geometric dummy blocks on boot up
             generateSystemPlaceholders();
 
-            // Dom Logic Binding Subscriptions
+            // Dom Logic Setup Listeners
             document.getElementById('glb-uploader').addEventListener('change', parseUploadedGlbs);
             document.getElementById('generate-trigger').addEventListener('click', runProceduralGenerationPipeline);
+            document.getElementById('export-trigger').addEventListener('click', exportSceneToGltf);
             window.addEventListener('resize', onWindowResize);
 
-            // Trigger immediate layout run with fallbacks on bootup
+            // Instantly run generation using default templates on initial boot
             runProceduralGenerationPipeline();
         }
 
-        // Creates default primitives if the user hasn't uploaded .glb models yet
         function generateSystemPlaceholders() {
-            const structures = [
-                { geo: new THREE.BoxGeometry(2, 6, 2), color: 0x3a4f5c },     // Skyscraper/Tower block
-                { geo: new THREE.BoxGeometry(2.2, 2.2, 2.2), color: 0x8c6239 }, // Residential block
-                { geo: new THREE.CylinderGeometry(0, 1.5, 3, 4), color: 0x4d6a45 } // Pointed roof block
-            ];
-            structures.forEach(s => {
-                s.geo.translate(0, s.geo.parameters.height ? s.geo.parameters.height / 2 : 1.5, 0);
-                const mesh = new THREE.Mesh(s.geo, new THREE.MeshStandardMaterial({ color: s.color, roughness: 0.5 }));
+            const hexColors = [0x3a86ff, 0xff006e, 0xffbe0b];
+            hexColors.forEach(color => {
+                const geo = new THREE.BoxGeometry(2, 5, 2);
+                geo.translate(0, 2.5, 0); // Ground alignment anchor
+                const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: color, roughness: 0.4 }));
                 assetTemplates.push(mesh);
             });
         }
 
-        // Extracts uploaded .glb files and centers their origin pivots
         function parseUploadedGlbs(e) {
             const files = e.target.files;
             if(!files.length) return;
 
-            assetTemplates = []; // Purge default primitive profiles
+            assetTemplates = []; // Flush fallback profiles on real upload interaction
             const gltfLoader = new THREE.GLTFLoader();
-            let parsedCounter = 0;
 
             Array.from(files).forEach(file => {
                 const reader = new FileReader();
                 reader.readAsArrayBuffer(file);
                 reader.onload = function(event) {
                     gltfLoader.parse(event.target.result, '', (gltf) => {
-                        const rootGroup = gltf.scene;
-                        const boundBox = new THREE.Box3().setFromObject(rootGroup);
-                        const centerOffset = boundBox.getCenter(new THREE.Vector3());
+                        const model = gltf.scene;
                         
-                        // Pivot modification mapping to absolute base bottom edge
-                        rootGroup.position.set(-centerOffset.x, -boundBox.min.y, -centerOffset.z);
+                        // Force Automatic Scale Normalization Block Mapping Rules
+                        const boundBox = new THREE.Box3().setFromObject(model);
+                        const size = boundBox.getSize(new THREE.Vector3());
+                        const maxDim = Math.max(size.x, size.y, size.z);
                         
-                        const normalizedAnchor = new THREE.Group();
-                        normalizedAnchor.add(rootGroup);
+                        if(maxDim > 0) {
+                            const targetScale = 3.5 / maxDim; // Map bounds size cleanly into our layout coordinates
+                            model.scale.set(targetScale, targetScale, targetScale);
+                        }
+
+                        // Force structural alignment mapping to bottom core coordinate vectors
+                        const freshBounds = new THREE.Box3().setFromObject(model);
+                        const centerOffset = freshBounds.getCenter(new THREE.Vector3());
+                        model.position.set(-centerOffset.x, -freshBounds.min.y, -centerOffset.z);
                         
-                        assetTemplates.push(normalizedAnchor);
-                        parsedCounter++;
-                        document.getElementById('asset-count').innerText = `${assetTemplates.length} custom asset shapes loaded. Ready for generation matrix pipeline.`;
-                    });
+                        const wrapperNode = new THREE.Group();
+                        wrapperNode.add(model);
+                        
+                        assetTemplates.push(wrapperNode);
+                        document.getElementById('asset-count').innerText = `${assetTemplates.length} Custom Model(s) Mounted. Click 'Generate' to distribute.`;
+                    }, (err) => console.error("Extraction error:", err));
                 };
             });
         }
 
-        // Clear previous generation run
-        function clearActiveSettlement() {
-            const objectsToRemove = [];
-            scene.traverse(node => {
-                if(node.name === "procedural_building_instance" || node.name === "infrastructure_road") {
-                    objectsToRemove.push(node);
-                }
-            });
-            objectsToRemove.forEach(obj => scene.remove(obj));
-        }
-
-        // Main Architecture Procedural Pipeline Logic Engine
         function runProceduralGenerationPipeline() {
             if(!assetTemplates.length) return;
-            loaderStatus.style.display = "block";
-            
-            clearActiveSettlement();
+
+            // Completely empty old objects inside the container group matrix
+            while(currentGenerationGroup.children.length > 0){ 
+                currentGenerationGroup.remove(currentGenerationGroup.children[0]); 
+            }
 
             const profile = document.getElementById('biome-selector').value;
-            const offsetCorrection = (GRID_SIZE * SPACING) / 2;
+            const offset = (GRID_SIZE * SPACING) / 2;
 
-            // Loop through the layout grid coordinate system matrix
             for(let x = 0; x < GRID_SIZE; x++) {
                 for(let z = 0; z < GRID_SIZE; z++) {
                     
-                    // Determine world coordinate placement locations
-                    const targetX = x * SPACING - offsetCorrection;
-                    const targetZ = z * SPACING - offsetCorrection;
+                    // 65% spawn probability filter mapping density spread
+                    if (Math.random() > 0.35) { 
+                        const targetX = x * SPACING - offset + SPACING/2;
+                        const targetZ = z * SPACING - offset + SPACING/2;
 
-                    // Execute generation math based on selected profile
-                    if (profile === "CITY") {
-                        // Dense Grid Layout: Reserve space for procedural avenue lines
-                        if (x % 4 === 0 || z % 4 === 0) {
-                            spawnRoadSegment(targetX, targetZ);
-                        } else {
-                            // 85% build-up layout fill density
-                            if (Math.random() > 0.15) {
-                                // City Profile: High density, vertically uniform scaling
-                                const variantIndex = Math.floor(Math.random() * assetTemplates.length);
-                                const heightScalar = 1.0 + Math.random() * 2.5; // Stretch skyscrapers upward
-                                spawnAssetInstance(variantIndex, targetX, targetZ, heightScalar, 1.0, 0);
-                            }
-                        }
-                    } 
-                    else if (profile === "VILLAGE") {
-                        // Village Profile: Organic noise clusters using simple math rings
-                        const distanceToCenter = Math.sqrt(Math.pow(x - GRID_SIZE/2, 2) + Math.pow(z - GRID_SIZE/2, 2));
+                        const variantIndex = Math.floor(Math.random() * assetTemplates.length);
+                        const instance = assetTemplates[variantIndex].clone();
                         
-                        // Cluster structures near the center of the coordinate space
-                        if (distanceToCenter < 9) {
-                            // Randomized scatter probability drops as we move outward
-                            if (Math.random() > (distanceToCenter / 11)) {
-                                const variantIndex = Math.floor(Math.random() * assetTemplates.length);
-                                const scaleFactor = 0.6 + Math.random() * 0.6; // Smaller, naturally varied scales
-                                const randomAngle = Math.random() * Math.PI * 2; // Full organic rotation
-                                spawnAssetInstance(variantIndex, targetX, targetZ, scaleFactor, scaleFactor, randomAngle);
+                        // Fallback check to override missing/invisible textures on basic file conversions
+                        instance.traverse(node => {
+                            if(node.isMesh) {
+                                node.castShadow = true;
+                                node.receiveShadow = true;
+                                if(!node.material.map && node.material.color.getHex() === 0xffffff) {
+                                    node.material = new THREE.MeshStandardMaterial({ color: 0x909090, roughness: 0.6 });
+                                }
                             }
-                        }
-                    } 
-                    else if (profile === "OUTPOST") {
-                        // Outpost Profile: Industrial layout built in rigid linear strips
-                        if (x % 3 === 0 && z % 2 === 0) {
-                            if (Math.random() > 0.2) {
-                                const variantIndex = Math.floor(Math.random() * assetTemplates.length);
-                                // Snapped alignment rotation step rule (0 or 180 degrees only)
-                                const snappedAngle = Math.random() > 0.5 ? 0 : Math.PI;
-                                spawnAssetInstance(variantIndex, targetX, targetZ, 1.0, 1.2, snappedAngle);
-                            }
-                        }
-                    }
+                        });
 
+                        instance.position.set(targetX, 0, targetZ);
+                        
+                        // Layout transformation logic profiling rules
+                        if(profile === "VILLAGE") {
+                            instance.rotation.y = Math.random() * Math.PI * 2; // Random 360 rotation loops
+                        } else {
+                            // Snapped city alignment rules (90 degree layout snaps)
+                            const angles = [0, Math.PI / 2, Math.PI, Math.PI * 1.5];
+                            instance.rotation.y = angles[Math.floor(Math.random() * angles.length)];
+                        }
+
+                        // Append generated model inside the target group layer
+                        currentGenerationGroup.add(instance);
+                    }
                 }
             }
+        }
+
+        // Scene Exporter Interface Logic
+        function exportSceneToGltf() {
+            if (currentGenerationGroup.children.length === 0) {
+                alert("Nothing generated to export! Render a layout first.");
+                return;
+            }
+
+            const exporter = new THREE.GLTFExporter();
             
-            setTimeout(() => { loaderStatus.style.display = "none"; }, 400);
+            // Only export the isolated generated group mesh data to avoid downloading lights and layout grids
+            exporter.parse(
+                currentGenerationGroup,
+                function (gltf) {
+                    const outputString = JSON.stringify(gltf, null, 2);
+                    downloadFileBlob(outputString, 'procedural_town_layout.gltf');
+                },
+                function (error) {
+                    console.error('An error occurred during scene construction parsing:', error);
+                },
+                { binary: false } // Exports clean text JSON representation parsing rules (.gltf wrapper text format)
+            );
         }
 
-        // Instantiates and places a selected asset variant into the world
-        function spawnAssetInstance(assetIndex, x, z, heightScale, widthScale, rotationY) {
-            const sourceTemplate = assetTemplates[assetIndex];
-            const instance = sourceTemplate.clone();
-
-            instance.traverse(node => {
-                if(node.isMesh) {
-                    node.castShadow = true;
-                    node.receiveShadow = true;
-                }
-            });
-
-            // Adjust size based on the environment rules
-            instance.scale.set(widthScale, heightScale, widthScale);
-            instance.rotation.y = rotationY;
-            instance.position.set(x, 0, z);
-            instance.name = "procedural_building_instance";
-
-            scene.add(instance);
-        }
-
-        // Generates simple dark floor strips for roads in City mode
-        function spawnRoadSegment(x, z) {
-            const roadGeo = new THREE.PlaneGeometry(SPACING, SPACING);
-            const roadMat = new THREE.MeshStandardMaterial({ color: 0x1c1c1f, roughness: 0.95 });
-            const segment = new THREE.Mesh(roadGeo, roadMat);
-            segment.rotation.x = -Math.PI / 2;
-            segment.position.set(x, 0.02, z); // Layer slightly above ground plane to prevent flickering
-            segment.receiveShadow = true;
-            segment.name = "infrastructure_road";
-            scene.add(segment);
+        function downloadFileBlob(text, filename) {
+            const element = document.createElement('a');
+            element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+            element.setAttribute('download', filename);
+            element.style.display = 'none';
+            document.body.appendChild(element);
+            element.click();
+            document.body.removeChild(element);
         }
 
         function onWindowResize() {
