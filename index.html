@@ -3,47 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Procedural Town Auto-Generator & GLTF Exporter</title>
+    <title>Minimal 3D GLB Viewer</title>
     <style>
         body {
             margin: 0; padding: 0; overflow: hidden;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #111116; color: #eee;
+            background: #1a1a1e; color: #eee;
         }
         #canvas-container { width: 100vw; height: 100vh; position: absolute; top:0; left:0; z-index:1; }
         
-        #control-sidebar {
+        #drop-zone {
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+            z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: rgba(26, 26, 30, 0.85); border: 3px dashed #4af; box-sizing: border-box;
+            transition: opacity 0.2s ease; pointer-events: none; opacity: 1;
+        }
+        #drop-zone.hidden { opacity: 0; pointer-events: none; }
+        #drop-zone p { margin: 10px 0 0 0; font-size: 16px; color: #4af; font-weight: bold; }
+
+        #control-panel {
             position: absolute; top: 15px; left: 15px; z-index: 10;
-            background: rgba(20, 20, 25, 0.95); padding: 15px; border-radius: 12px;
-            width: 290px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);
-            border: 1px solid #3c3c4a; backdrop-filter: blur(8px);
+            background: rgba(30, 30, 35, 0.9); padding: 15px; border-radius: 10px;
+            width: 250px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); border: 1px solid #333;
         }
-        h3 { margin: 0 0 12px 0; color: #4af; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
-        .section { margin-bottom: 15px; border-bottom: 1px solid #2a2a35; padding-bottom: 12px; }
-        .section:last-child { border: none; margin: 0; padding: 0; }
-        label { display: block; font-size: 11px; color: #aaa; margin-bottom: 5px; font-weight: bold; }
+        h3 { margin: 0 0 10px 0; color: #fff; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .control-item { margin-bottom: 12px; }
+        .control-item:last-child { margin-bottom: 0; }
+        label { display: block; font-size: 11px; color: #aaa; margin-bottom: 4px; font-weight: bold; }
         
-        input[type="file"], select {
-            width: 100%; background: #1a1a22; color: #fff; padding: 8px;
+        input[type="file"], select, button {
+            width: 100%; background: #25252b; color: #fff; padding: 8px;
             border: 1px solid #444; border-radius: 6px; font-size: 12px; box-sizing: border-box; outline: none;
-            margin-bottom: 4px;
         }
+        button { background: #4af; color: #000; font-weight: bold; cursor: pointer; border: none; text-transform: uppercase; }
+        button:hover { background: #39e; }
         
-        .btn {
-            width: 100%; border: none; padding: 12px; border-radius: 8px; 
-            font-weight: bold; font-size: 12px; cursor: pointer; text-transform: uppercase;
-            margin-bottom: 8px; display: block; box-sizing: border-box; text-align: center;
-        }
-        .gen-btn { background: #4af; color: #000; }
-        .gen-btn:hover { background: #39e; }
-        .export-btn { background: #2ed573; color: #000; }
-        .export-btn:hover { background: #26af5f; }
+        .toggle-container { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: #ccc; }
+        .toggle-container input { cursor: pointer; width: auto; }
         
-        .stats { font-size: 11px; color: #888; margin-top: 4px; line-height: 1.3; }
+        #model-info { font-size: 11px; color: #888; margin-top: 5px; line-height: 1.4; word-break: break-all; }
     </style>
     
-    <!-- FIXED AND COMPLETE UNPKG DEPENDENCIES (THREE, ORBITCONTROLS, GLTFLOADER, GLTFEXPORTER) -->
-    <script src="unpkg.com"></script>
+    <!-- Three.js Core, OrbitControls, and GLTFLoader CDN hooks -->
     <script src="unpkg.com"></script>
     <script src="unpkg.com"></script>
     <script src="unpkg.com"></script>
@@ -52,228 +53,202 @@
 
     <div id="canvas-container"></div>
 
-    <div id="control-sidebar">
-        <div class="section">
-            <h3>1. Feed Custom Assets</h3>
-            <label>Upload 3D Models (.glb):</label>
-            <input type="file" id="glb-uploader" accept=".glb" multiple>
-            <div class="stats" id="asset-count">0 custom meshes loaded.<br>Using colored system blocks.</div>
+    <div id="drop-zone">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#4af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+        <p>Drag & Drop your .glb file here</p>
+    </div>
+
+    <div id="control-panel">
+        <h3>Viewer Engine</h3>
+        
+        <div class="control-item">
+            <label>Load Model manually:</label>
+            <input type="file" id="file-input" accept=".glb">
+            <div id="model-info">No file active</div>
         </div>
 
-        <div class="section">
-            <h3>2. Layout Parameters</h3>
-            <label>Zoning Profile Architecture:</label>
-            <select id="biome-selector">
-                <option value="CITY">Metropolis Grid</option>
-                <option value="VILLAGE">Organic Village Clusters</option>
+        <div class="control-item">
+            <label>Lighting Environment:</label>
+            <select id="lighting-select">
+                <option value="studio">Studio Light (Bright)</option>
+                <option value="dramatic">Dramatic High Contrast</option>
+                <option value="ambient">Flat Ambient Only</option>
             </select>
         </div>
 
-        <div class="section">
-            <button class="btn gen-btn" id="generate-trigger">Auto-Generate Town</button>
-            <button class="btn export-btn" id="export-trigger">Export Whole Scene (.gltf)</button>
+        <div class="control-item toggle-container">
+            <span>Render Wireframe Only</span>
+            <input type="checkbox" id="wireframe-toggle">
         </div>
+
+        <button id="reset-cam-btn">Reset View Focus</button>
     </div>
 
     <script>
         let scene, camera, renderer, controls;
-        let assetTemplates = []; 
-        let currentGenerationGroup = null; // Container keeping only generated items isolated for export
-        
-        const GRID_SIZE = 12; 
-        const SPACING = 5.0;  
+        let currentModel = null;
+        let dirLight, hemiLight;
+
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const modelInfo = document.getElementById('model-info');
+        const wireframeToggle = document.getElementById('wireframe-toggle');
+        const lightingSelect = document.getElementById('lighting-select');
+        const resetCamBtn = document.getElementById('reset-cam-btn');
 
         init();
         animate();
 
         function init() {
-            // Scene & Environment
+            // Scene Setup
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x13131a);
-            scene.fog = new THREE.FogExp2(0x13131a, 0.01);
+            scene.background = new THREE.Color(0x1a1a1e);
 
-            // View Engine Optics
-            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
-            camera.position.set(35, 35, 55);
+            // Optics View Setup
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 1000);
+            camera.position.set(0, 2, 5);
 
-            renderer = new THREE.WebGLRenderer({ antialias: true });
+            // Renderer Configuration
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
             renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
             document.getElementById('canvas-container').appendChild(renderer.domElement);
 
+            // Camera Controls Implementation
             controls = new THREE.OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
             controls.dampingFactor = 0.05;
 
-            // Lights Setup
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-            scene.add(ambientLight);
+            // Lighting Setup
+            hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
+            scene.add(hemiLight);
 
-            const sun = new THREE.DirectionalLight(0xffffff, 1.0);
-            sun.position.set(40, 80, 20);
-            sun.castShadow = true;
-            scene.add(sun);
+            dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            dirLight.position.set(5, 10, 7);
+            dirLight.castShadow = true;
+            scene.add(dirLight);
 
-            // Static Base Ground Map Plane (We don't export this to keep files clean)
-            const groundGeo = new THREE.PlaneGeometry(150, 150);
-            const groundMat = new THREE.MeshStandardMaterial({ color: 0x1c1c24, roughness: 0.8 });
-            const ground = new THREE.Mesh(groundGeo, groundMat);
-            ground.rotation.x = -Math.PI / 2;
-            ground.receiveShadow = true;
-            scene.add(ground);
-
-            const grid = new THREE.GridHelper(150, 30, 0x3c3c4a, 0x22222b);
-            grid.position.y = 0.01;
+            // Base Interaction Floor Grid
+            const grid = new THREE.GridHelper(20, 20, 0x44444a, 0x2d2d35);
+            grid.position.y = -0.01;
             scene.add(grid);
 
-            // Initialize isolated generation node group wrapper
-            currentGenerationGroup = new THREE.Group();
-            scene.add(currentGenerationGroup);
+            // Setup Listeners for Drag and Drop Actions
+            setupDragAndDrop();
 
-            // Generate bright geometric dummy blocks on boot up
-            generateSystemPlaceholders();
-
-            // Dom Logic Setup Listeners
-            document.getElementById('glb-uploader').addEventListener('change', parseUploadedGlbs);
-            document.getElementById('generate-trigger').addEventListener('click', runProceduralGenerationPipeline);
-            document.getElementById('export-trigger').addEventListener('click', exportSceneToGltf);
+            // Dom Component Wireups
+            fileInput.addEventListener('change', (e) => loadGlbFile(e.target.files[0]));
+            wireframeToggle.addEventListener('change', toggleWireframeMode);
+            lightingSelect.addEventListener('change', alterLightingEnvironment);
+            resetCamBtn.addEventListener('click', fitCameraToModel);
             window.addEventListener('resize', onWindowResize);
-
-            // Instantly run generation using default templates on initial boot
-            runProceduralGenerationPipeline();
         }
 
-        function generateSystemPlaceholders() {
-            const hexColors = [0x3a86ff, 0xff006e, 0xffbe0b];
-            hexColors.forEach(color => {
-                const geo = new THREE.BoxGeometry(2, 5, 2);
-                geo.translate(0, 2.5, 0); // Ground alignment anchor
-                const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: color, roughness: 0.4 }));
-                assetTemplates.push(mesh);
-            });
-        }
+        // File loading extraction parser
+        function loadGlbFile(file) {
+            if (!file) return;
+            dropZone.classList.add('hidden');
+            modelInfo.innerText = `Loading: ${file.name}...`;
 
-        function parseUploadedGlbs(e) {
-            const files = e.target.files;
-            if(!files.length) return;
+            // Flush old active model structures out of memory bounds
+            if (currentModel) scene.remove(currentModel);
 
-            assetTemplates = []; // Flush fallback profiles on real upload interaction
-            const gltfLoader = new THREE.GLTFLoader();
+            const reader = new FileReader();
+            reader.readAsArrayBuffer(file);
+            reader.onload = function (event) {
+                const gltfLoader = new THREE.GLTFLoader();
+                gltfLoader.parse(event.target.result, '', (gltf) => {
+                    currentModel = gltf.scene;
 
-            Array.from(files).forEach(file => {
-                const reader = new FileReader();
-                reader.readAsArrayBuffer(file);
-                reader.onload = function(event) {
-                    gltfLoader.parse(event.target.result, '', (gltf) => {
-                        const model = gltf.scene;
-                        
-                        // Force Automatic Scale Normalization Block Mapping Rules
-                        const boundBox = new THREE.Box3().setFromObject(model);
-                        const size = boundBox.getSize(new THREE.Vector3());
-                        const maxDim = Math.max(size.x, size.y, size.z);
-                        
-                        if(maxDim > 0) {
-                            const targetScale = 3.5 / maxDim; // Map bounds size cleanly into our layout coordinates
-                            model.scale.set(targetScale, targetScale, targetScale);
+                    // Automatically configuration shadows across all structural children meshes
+                    currentModel.traverse(node => {
+                        if (node.isMesh) {
+                            node.castShadow = true;
+                            node.receiveShadow = true;
                         }
+                    });
 
-                        // Force structural alignment mapping to bottom core coordinate vectors
-                        const freshBounds = new THREE.Box3().setFromObject(model);
-                        const centerOffset = freshBounds.getCenter(new THREE.Vector3());
-                        model.position.set(-centerOffset.x, -freshBounds.min.y, -centerOffset.z);
-                        
-                        const wrapperNode = new THREE.Group();
-                        wrapperNode.add(model);
-                        
-                        assetTemplates.push(wrapperNode);
-                        document.getElementById('asset-count').innerText = `${assetTemplates.length} Custom Model(s) Mounted. Click 'Generate' to distribute.`;
-                    }, (err) => console.error("Extraction error:", err));
-                };
-            });
-        }
-
-        function runProceduralGenerationPipeline() {
-            if(!assetTemplates.length) return;
-
-            // Completely empty old objects inside the container group matrix
-            while(currentGenerationGroup.children.length > 0){ 
-                currentGenerationGroup.remove(currentGenerationGroup.children[0]); 
-            }
-
-            const profile = document.getElementById('biome-selector').value;
-            const offset = (GRID_SIZE * SPACING) / 2;
-
-            for(let x = 0; x < GRID_SIZE; x++) {
-                for(let z = 0; z < GRID_SIZE; z++) {
+                    scene.add(currentModel);
                     
-                    // 65% spawn probability filter mapping density spread
-                    if (Math.random() > 0.35) { 
-                        const targetX = x * SPACING - offset + SPACING/2;
-                        const targetZ = z * SPACING - offset + SPACING/2;
+                    // Display model details and snap camera straight to object bounding volume box centers
+                    modelInfo.innerText = `File: ${file.name}\nSize: ${(file.size / (1024 * 1024)).toFixed(2)} MB`;
+                    wireframeToggle.checked = false; 
+                    fitCameraToModel();
+                }, (error) => {
+                    modelInfo.innerText = "Error parsing file format.";
+                    console.error(error);
+                });
+            };
+        }
 
-                        const variantIndex = Math.floor(Math.random() * assetTemplates.length);
-                        const instance = assetTemplates[variantIndex].clone();
-                        
-                        // Fallback check to override missing/invisible textures on basic file conversions
-                        instance.traverse(node => {
-                            if(node.isMesh) {
-                                node.castShadow = true;
-                                node.receiveShadow = true;
-                                if(!node.material.map && node.material.color.getHex() === 0xffffff) {
-                                    node.material = new THREE.MeshStandardMaterial({ color: 0x909090, roughness: 0.6 });
-                                }
-                            }
-                        });
+        // Calculations to safely auto-frame models of any size cleanly inside the display viewports
+        function fitCameraToModel() {
+            if (!currentModel) return;
 
-                        instance.position.set(targetX, 0, targetZ);
-                        
-                        // Layout transformation logic profiling rules
-                        if(profile === "VILLAGE") {
-                            instance.rotation.y = Math.random() * Math.PI * 2; // Random 360 rotation loops
-                        } else {
-                            // Snapped city alignment rules (90 degree layout snaps)
-                            const angles = [0, Math.PI / 2, Math.PI, Math.PI * 1.5];
-                            instance.rotation.y = angles[Math.floor(Math.random() * angles.length)];
-                        }
+            const box = new THREE.Box3().setFromObject(currentModel);
+            const size = box.getSize(new THREE.Vector3());
+            const center = box.getCenter(new THREE.Vector3());
 
-                        // Append generated model inside the target group layer
-                        currentGenerationGroup.add(instance);
-                    }
+            // Shift object pivot directly over grid origin center coordinates
+            currentModel.position.x += (currentModel.position.x - center.x);
+            currentModel.position.z += (currentModel.position.z - center.z);
+            currentModel.position.y += (-box.min.y); // Anchor bottom edge cleanly to grid floor surface level
+
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const fov = camera.fov * (Math.PI / 180);
+            let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.5; // Back out camera far enough to avoid frame clips
+
+            camera.position.set(cameraZ, maxDim * 1.2, cameraZ);
+            controls.target.set(0, maxDim / 2, 0);
+            camera.lookAt(0, maxDim / 2, 0);
+            controls.update();
+        }
+
+        function toggleWireframeMode() {
+            if (!currentModel) return;
+            const wireframeState = wireframeToggle.checked;
+            currentModel.traverse(node => {
+                if (node.isMesh && node.material) {
+                    node.material.wireframe = wireframeState;
                 }
+            });
+        }
+
+        function alterLightingEnvironment() {
+            const style = lightingSelect.value;
+            if (style === 'studio') {
+                hemiLight.intensity = 1.0;
+                dirLight.intensity = 1.5;
+                dirLight.position.set(5, 10, 7);
+            } else if (style === 'dramatic') {
+                hemiLight.intensity = 0.2;
+                dirLight.intensity = 2.5;
+                dirLight.position.set(-2, 8, -4);
+            } else if (style === 'ambient') {
+                hemiLight.intensity = 2.0;
+                dirLight.intensity = 0.0;
             }
         }
 
-        // Scene Exporter Interface Logic
-        function exportSceneToGltf() {
-            if (currentGenerationGroup.children.length === 0) {
-                alert("Nothing generated to export! Render a layout first.");
-                return;
-            }
-
-            const exporter = new THREE.GLTFExporter();
-            
-            // Only export the isolated generated group mesh data to avoid downloading lights and layout grids
-            exporter.parse(
-                currentGenerationGroup,
-                function (gltf) {
-                    const outputString = JSON.stringify(gltf, null, 2);
-                    downloadFileBlob(outputString, 'procedural_town_layout.gltf');
-                },
-                function (error) {
-                    console.error('An error occurred during scene construction parsing:', error);
-                },
-                { binary: false } // Exports clean text JSON representation parsing rules (.gltf wrapper text format)
-            );
-        }
-
-        function downloadFileBlob(text, filename) {
-            const element = document.createElement('a');
-            element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
-            element.setAttribute('download', filename);
-            element.style.display = 'none';
-            document.body.appendChild(element);
-            element.click();
-            document.body.removeChild(element);
+        function setupDragAndDrop() {
+            window.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('hidden');
+            });
+            window.addEventListener('dragleave', (e) => {
+                // Only hide if cursor leaves viewport completely
+                if (e.clientY <= 0 || e.clientX <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
+                    if(currentModel) dropZone.classList.add('hidden');
+                }
+            });
+            window.addEventListener('drop', (e) => {
+                e.preventDefault();
+                if (e.dataTransfer.files.length > 0) {
+                    loadGlbFile(e.dataTransfer.files[0]);
+                }
+            });
         }
 
         function onWindowResize() {
