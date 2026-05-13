@@ -2,16 +2,18 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Procedural Brush Scatterer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mobile Procedural 3D Builder</title>
     <style>
         body {
             margin: 0;
             padding: 0;
             overflow: hidden;
-            font-family: sans-serif;
-            background-color: #1a1a1a;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #121212;
             color: #fff;
+            user-select: none;
+            -webkit-user-select: none;
         }
         #canvas-container {
             width: 100vw;
@@ -21,79 +23,130 @@
             left: 0;
             z-index: 1;
         }
+        
+        /* Floating Dynamic UI Panel */
         #ui-panel {
             position: absolute;
             top: 10px;
             left: 10px;
             z-index: 10;
-            background: rgba(0, 0, 0, 0.85);
-            padding: 15px;
-            border-radius: 8px;
-            max-width: 320px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            border: 1px solid #444;
+            background: rgba(20, 20, 20, 0.9);
+            padding: 12px;
+            border-radius: 12px;
+            width: 260px;
+            max-height: 45vh;
+            overflow-y: auto;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            border: 1px solid #333;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
         }
-        h3 { margin-top: 0; color: #4af; font-size: 16px; border-bottom: 1px solid #333; padding-bottom: 5px;}
-        .control-group {
-            margin-bottom: 12px;
-        }
-        label {
-            display: block;
-            font-size: 12px;
-            margin-bottom: 4px;
-            color: #ccc;
-        }
+        h3 { margin: 0 0 10px 0; color: #4af; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;}
+        .control-group { margin-bottom: 10px; }
+        label { display: block; font-size: 11px; margin-bottom: 3px; color: #aaa; }
+        
+        /* Modern styled minimal input buttons */
         input[type="file"] {
             display: block;
             width: 100%;
             background: #222;
             color: #fff;
-            padding: 5px;
-            border: 1px solid #555;
-            border-radius: 4px;
+            padding: 6px;
+            border: 1px solid #444;
+            border-radius: 6px;
             box-sizing: border-box;
             font-size: 11px;
-            cursor: pointer;
         }
-        input[type="range"] {
-            width: 100%;
-            accent-color: #4af;
+        
+        /* Segmented View Control Toggle Switch */
+        .view-toggle {
+            display: flex;
+            background: #222;
+            border-radius: 8px;
+            padding: 2px;
+            border: 1px solid #444;
+            margin-bottom: 10px;
         }
-        .stats {
-            font-size: 11px;
-            color: #888;
-            margin-top: 5px;
-        }
-        button {
-            width: 100%;
-            background: #d9534f;
-            color: white;
+        .view-btn {
+            flex: 1;
+            background: transparent;
             border: none;
-            padding: 8px;
-            border-radius: 4px;
-            cursor: pointer;
+            color: #888;
+            padding: 6px;
+            font-size: 11px;
             font-weight: bold;
-            margin-top: 5px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
         }
-        button:hover { background: #c9302c; }
-        #instructions {
+        .view-btn.active {
+            background: #4af;
+            color: #000;
+        }
+
+        button.danger-btn {
+            width: 100%;
+            background: #331a1a;
+            color: #ff6b6b;
+            border: 1px solid #552222;
+            padding: 6px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+        
+        /* Touch Joystick Overlays for Mobile First-Person roaming */
+        .joystick-container {
             position: absolute;
-            bottom: 15px;
+            bottom: 30px;
+            z-index: 10;
+            width: 80px;
+            height: 80px;
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            display: none; /* Auto toggled via script depending on mode */
+            touch-action: none;
+        }
+        #move-joy { left: 30px; }
+        #look-joy { right: 30px; }
+        .joy-stick {
+            position: absolute;
+            top: 25px;
+            left: 25px;
+            width: 30px;
+            height: 30px;
+            background: rgba(255,255,255,0.7);
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        /* Brush Draw Indicator Overlay Toggle Button */
+        #paint-action-btn {
+            position: absolute;
+            bottom: 30px;
             left: 50%;
             transform: translateX(-50%);
             z-index: 10;
-            background: rgba(0,0,0,0.7);
-            padding: 8px 15px;
-            border-radius: 20px;
-            font-size: 13px;
-            pointer-events: none;
-            text-align: center;
-            border: 1px solid #555;
+            background: #4af;
+            color: #000;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 30px;
+            font-weight: bold;
+            font-size: 14px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+            display: none;
         }
+        #paint-action-btn.active {
+            background: #ff4757;
+            color: #fff;
+        }
+
+        .stats { font-size: 10px; color: #666; margin-top: 2px; }
     </style>
 
-    <!-- Include Three.js and GLTFLoader from unpkg CDN -->
-    <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+    <!-- Essential dependencies injected via static mirrors -->
     <script src="unpkg.com"></script>
     <script src="unpkg.com"></script>
 </head>
@@ -102,187 +155,239 @@
     <div id="canvas-container"></div>
 
     <div id="ui-panel">
-        <h3>Procedural 3D Scatter Engine</h3>
+        <h3>Engine Matrix</h3>
         
+        <label>View & Generator Mode:</label>
+        <div class="view-toggle">
+            <button class="view-btn active" id="mode-iso">Isometric (Draw Tiles)</button>
+            <button class="view-btn" id="mode-fpv">FPV Roam</button>
+        </div>
+
         <div class="control-group">
-            <label>1. Upload GLB Assets (Select Multiple):</label>
+            <label>Upload 3D Models (.glb):</label>
             <input type="file" id="glb-uploader" accept=".glb" multiple>
-            <div class="stats" id="assets-count">Loaded: 0 assets (Using fallbacks)</div>
+            <div class="stats" id="assets-count">Status: Using structural shapes</div>
         </div>
 
         <div class="control-group">
-            <label>2. Upload Custom Texture Overwrite (Image):</label>
+            <label>Custom Surface Skin (Image):</label>
             <input type="file" id="texture-uploader" accept="image/*">
-            <div class="stats" id="texture-status">Texture: Original Asset Textures</div>
+            <div class="stats" id="texture-status">Texture: Native shaders</div>
         </div>
 
-        <div class="control-group">
-            <label>Brush Radius (Spacing Control):</label>
-            <input type="range" id="brush-radius" min="0.5" max="5" step="0.1" value="1.5">
-        </div>
-
-        <div class="control-group">
-            <label>Scale Variation Randomness:</label>
-            <input type="range" id="scale-random" min="0" max="1" step="0.1" value="0.5">
-        </div>
-
-        <button id="clear-btn">Clear All Generated Objects</button>
+        <button class="danger-btn" id="clear-btn">Clear Environment</button>
     </div>
 
-    <div id="instructions">
-        <strong>Left Click + Drag</strong> on grid to build | <strong>Right Click + Drag</strong> to rotate camera
-    </div>
+    <!-- Mobile Virtual Control Surfaces -->
+    <div id="move-joy" class="joystick-container"><div class="joy-stick"></div></div>
+    <div id="look-joy" class="joystick-container"><div class="joy-stick"></div></div>
+    <button id="paint-action-btn">TAP & DRAG TO DRAW</button>
 
     <script>
-        // --- App State ---
-        let scene, camera, renderer, controls;
-        let loadedMeshes = []; // Stores user uploaded asset templates
+        // --- Core Engine Configuration State ---
+        let scene, renderer, currentCameraMode = 'ISO'; 
+        let activeCamera; // References either isoCamera or fpvCamera dynamically
+        let isoCamera, fpvCamera;
+        let loadedMeshes = [];
         let customTexture = null;
-        let groundPlane;
+        let groundPlane, gridHelper;
         let raycaster, mouse;
-        let isDragging = false;
-        let lastPlacementPosition = new THREE.Vector3();
+        
+        // Grid Calculation Properties for Isometric Tiling Layout
+        const TILE_SIZE = 2.0;
 
-        // UI Selectors
+        // FPV Mobile Movement Vector Calculations
+        let moveVector = new THREE.Vector3();
+        let fpvEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+        let joyMoveProps = { active: false, start: {x:0, y:0}, cur: {x:0, y:0} };
+        let joyLookProps = { active: false, start: {x:0, y:0}, cur: {x:0, y:0} };
+
+        // Interaction States
+        let isDrawing = false;
+        let lastPlacedTile = { x: null, z: null };
+
+        // Interface Cache Hooks
+        const uiPanel = document.getElementById('ui-panel');
+        const modeIsoBtn = document.getElementById('mode-iso');
+        const modeFpvBtn = document.getElementById('mode-fpv');
         const glbUploader = document.getElementById('glb-uploader');
         const textureUploader = document.getElementById('texture-uploader');
-        const brushRadiusInput = document.getElementById('brush-radius');
-        const scaleRandomInput = document.getElementById('scale-random');
         const clearBtn = document.getElementById('clear-btn');
         const assetsCountText = document.getElementById('assets-count');
         const textureStatusText = document.getElementById('texture-status');
+        const moveJoyEl = document.getElementById('move-joy');
+        const lookJoyEl = document.getElementById('look-joy');
+        const paintBtn = document.getElementById('paint-action-btn');
 
+        // Fire Execution Engine Loop
         init();
         animate();
 
         function init() {
-            // Scene setup
+            // Scene Setup
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x1a1a1a);
-            scene.fog = new THREE.FogExp2(0x1a1a1a, 0.015);
+            scene.background = new THREE.Color(0x121212);
+            scene.fog = new THREE.FogExp2(0x121212, 0.012);
 
-            // Camera setup
-            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 15, 25);
+            // Setup Dual Camera Ecosystem
+            const aspect = window.innerWidth / window.innerHeight;
+            
+            // 1. Isometric Structural Fixed View Orthographic Setup
+            const d = 15;
+            isoCamera = new THREE.OrthographicCamera(-d * aspect, d * aspect, d, -d, 1, 1000);
+            isoCamera.position.set(20, 20, 20);
+            isoCamera.lookAt(0, 0, 0);
 
-            // Renderer setup
-            renderer = new THREE.WebGLRenderer({ antialias: true });
+            // 2. First Person Free Roaming Perspective Setup
+            fpvCamera = new THREE.PerspectiveCamera(65, aspect, 0.1, 500);
+            fpvCamera.position.set(0, 2.5, 10);
+            
+            // Default to Isometric Matrix View
+            activeCamera = isoCamera;
+
+            // Renderer Setup
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
             renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Dynamic Mobile Scaling Frame Limit
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
             document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-            // Controls setup (Remap Left Click to allow painting)
-            controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.mouseButtons = {
-                LEFT: null, // Freed up for structural dragging
-                MIDDLE: THREE.MOUSE.DOLLY,
-                RIGHT: THREE.MOUSE.ROTATE
-            };
-            controls.enableDamping = true;
-            controls.dampingFactor = 0.05;
-            controls.target.set(0, 0, 0);
-
-            // Lighting
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            // Global Lighting Controls
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
             scene.add(ambientLight);
 
-            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            dirLight.position.set(20, 40, 20);
-            dirLight.castShadow = true;
-            dirLight.shadow.mapSize.width = 2048;
-            dirLight.shadow.mapSize.height = 2048;
-            dirLight.shadow.bias = -0.0005;
-            scene.add(dirLight);
+            const sunLight = new THREE.DirectionalLight(0xffffff, 0.85);
+            sunLight.position.set(30, 60, 20);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 1048;
+            sunLight.shadow.mapSize.height = 1048;
+            scene.add(sunLight);
 
-            // Grid & Ground Interaction Surface
-            const gridHelper = new THREE.GridHelper(100, 100, 0x444444, 0x222222);
-            gridHelper.position.y = 0.01; 
+            // Drawing Interface Layout Surfaces
+            gridHelper = new THREE.GridHelper(100, 50, 0x444444, 0x252525);
+            gridHelper.position.y = 0.01;
             scene.add(gridHelper);
 
             const groundGeo = new THREE.PlaneGeometry(100, 100);
-            const groundMat = new THREE.MeshStandardMaterial({ color: 0x252525, roughness: 0.8 });
+            const groundMat = new THREE.MeshStandardMaterial({ color: 0x181818, roughness: 0.9 });
             groundPlane = new THREE.Mesh(groundGeo, groundMat);
             groundPlane.rotation.x = -Math.PI / 2;
             groundPlane.receiveShadow = true;
             scene.add(groundPlane);
 
-            // Interaction Utilities
             raycaster = new THREE.Raycaster();
             mouse = new THREE.Vector2();
 
-            // Native Basic Fallbacks (Boxes/Prisms) if no files are uploaded
+            // Populate Fallback Procedural Shapes
             createFallbackAssets();
+            setupViewModeUI();
 
-            // Event Listeners
+            // Event Subscriptions
             window.addEventListener('resize', onWindowResize);
-            window.addEventListener('mousedown', onMouseDown);
-            window.addEventListener('mousemove', onMouseMove);
-            window.addEventListener('mouseup', onMouseUp);
+            
+            // Universal Hybrid Desktop/Mobile Input Handlers
+            window.addEventListener('mousedown', onDrawStart);
+            window.addEventListener('mousemove', onDrawingMove);
+            window.addEventListener('mouseup', onDrawEnd);
+            
+            window.addEventListener('touchstart', onDrawStart, { passive: false });
+            window.addEventListener('touchmove', onDrawingMove, { passive: false });
+            window.addEventListener('touchend', onDrawEnd);
 
-            // UI Listeners
+            // Asset Pipeline Pipeline hooks
             glbUploader.addEventListener('change', handleGlbUpload);
             textureUploader.addEventListener('change', handleTextureUpload);
-            clearBtn.addEventListener('click', clearGeneratedObjects);
+            clearBtn.addEventListener('click', clearEnvironment);
+
+            // Joystick Input Touch Bindings
+            setupJoystickSystem();
         }
 
-        // Generate clean procedural shapes as default geometry placeholders
+        // Default structures generated on start
         function createFallbackAssets() {
             const fallbackGeometries = [
-                new THREE.BoxGeometry(1, 2, 1),
-                new THREE.CylinderGeometry(0, 0.7, 2, 5),
-                new THREE.SphereGeometry(0.8, 8, 8)
+                new THREE.BoxGeometry(1.6, 2.5, 1.6),
+                new THREE.CylinderGeometry(0.8, 0.8, 3, 4),
+                new THREE.CylinderGeometry(0, 1, 2.5, 4)
             ];
             
             fallbackGeometries.forEach((geo) => {
-                geo.translate(0, 1, 0); // Align origin point to mesh base
-                const mat = new THREE.MeshStandardMaterial({ color: 0x777777 });
+                geo.translate(0, geo.parameters.height ? geo.parameters.height / 2 : 1.25, 0);
+                const mat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.5 });
                 const mesh = new THREE.Mesh(geo, mat);
                 loadedMeshes.push(mesh);
             });
         }
 
-        // Process custom .glb file uploads via arrayBuffer readers
+        // View Mode Toggle Handler
+        function setupViewModeUI() {
+            modeIsoBtn.addEventListener('click', () => switchCameraMode('ISO'));
+            modeFpvBtn.addEventListener('click', () => switchCameraMode('FPV'));
+            switchCameraMode('ISO'); // Default initialization config
+        }
+
+        function switchCameraMode(mode) {
+            currentCameraMode = mode;
+            if (mode === 'ISO') {
+                modeIsoBtn.classList.add('active');
+                modeFpvBtn.classList.remove('active');
+                activeCamera = isoCamera;
+                
+                // Toggle element visibilities
+                moveJoyEl.style.display = 'none';
+                lookJoyEl.style.display = 'none';
+                paintBtn.style.display = 'block';
+                gridHelper.visible = true;
+            } else {
+                modeFpvBtn.classList.add('active');
+                modeIsoBtn.classList.remove('active');
+                
+                // Align FPV orientation to point toward engine center
+                fpvCamera.position.set(0, 2.5, 15);
+                fpvEuler.set(0, 0, 0);
+                fpvCamera.quaternion.setFromEuler(fpvEuler);
+                activeCamera = fpvCamera;
+
+                moveJoyEl.style.display = 'block';
+                lookJoyEl.style.display = 'block';
+                paintBtn.style.display = 'none';
+                gridHelper.visible = false;
+            }
+        }
+
+        // GLB Asset Array Pipeline
         function handleGlbUpload(e) {
             const files = e.target.files;
             if (!files.length) return;
 
-            // Wipe out default primitive fallback arrays on first intentional load
             if(glbUploader.dataset.dirty !== "true") {
                 loadedMeshes = [];
                 glbUploader.dataset.dirty = "true";
             }
 
             const loader = new THREE.GLTFLoader();
-            let loadedCount = 0;
-
             Array.from(files).forEach(file => {
                 const reader = new FileReader();
                 reader.readAsArrayBuffer(file);
                 reader.onload = function (event) {
-                    const contents = event.target.result;
-                    loader.parse(contents, '', (gltf) => {
-                        const rootGroup = gltf.scene;
-                        
-                        // Normalize scale & anchor bounding point to base floor level
-                        const box = new THREE.Box3().setFromObject(rootGroup);
-                        const size = box.getSize(new THREE.Vector3());
+                    loader.parse(event.target.result, '', (gltf) => {
+                        const model = gltf.scene;
+                        const box = new THREE.Box3().setFromObject(model);
                         const center = box.getCenter(new THREE.Vector3());
                         
-                        rootGroup.position.set(-center.x, -box.min.y, -center.z); // Adjust pivot to base bottom
+                        model.position.set(-center.x, -box.min.y, -center.z);
                         
-                        const normalizedWrapper = new THREE.Group();
-                        normalizedWrapper.add(rootGroup);
-
-                        loadedMeshes.push(normalizedWrapper);
-                        loadedCount++;
-                        assetsCountText.innerText = `Loaded: ${loadedMeshes.length} custom assets`;
-                    }, (err) => console.error("GLTF Parse Error", err));
+                        const wrapper = new THREE.Group();
+                        wrapper.add(model);
+                        loadedMeshes.push(wrapper);
+                        assetsCountText.innerText = `Custom Assets Extracted: ${loadedMeshes.length}`;
+                    });
                 };
             });
         }
 
-        // Process custom override texture wrapper mapping
+        // Custom Texture Pipeline Override Map
         function handleTextureUpload(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -295,125 +400,204 @@
                 img.onload = function() {
                     customTexture = new THREE.Texture(img);
                     customTexture.needsUpdate = true;
-                    textureStatusText.innerText = `Texture: Loaded (${file.name})`;
+                    textureStatusText.innerText = `Active Texture Overwrite Applied`;
                     textureStatusText.style.color = "#4af";
                 }
             }
         }
 
-        // Core Procedural Generation Spawns
-        function spawnProceduralAsset(targetPosition) {
+        // Procedural Tiled Layout Generator Logic
+        function generateProceduralTile(gridX, gridZ) {
             if (loadedMeshes.length === 0) return;
 
-            // 1. Procedural Selection (Randomly pick from available asset variants)
+            // Stop duplicate generation cycles if the pointer is still inside the same cell bounds
+            if (lastPlacedTile.x === gridX && lastPlacedTile.z === gridZ) return;
+            lastPlacedTile = { x: gridX, z: gridZ };
+
+            // Calculate precise mathematical lock on Isometric tile coordinate centers
+            const posX = gridX * TILE_SIZE + TILE_SIZE / 2;
+            const posZ = gridZ * TILE_SIZE + TILE_SIZE / 2;
+
+            // Procedural Variant Chooser
             const randomIndex = Math.floor(Math.random() * loadedMeshes.length);
-            const template = loadedMeshes[randomIndex];
-            const instance = template.clone();
+            const instance = loadedMeshes[randomIndex].clone();
 
-            // 2. Apply Override Textures dynamically across children geometry
-            if (customTexture) {
-                instance.traverse((child) => {
-                    if (child.isMesh) {
-                        child.material = new THREE.MeshStandardMaterial({
-                            map: customTexture,
-                            roughness: 0.6,
-                            metalness: 0.1
-                        });
-                        child.castShadow = true;
-                        child.receiveShadow = true;
+            // Intercept standard materials and re-route shader to custom dynamic texture wrap map
+            instance.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                    if (customTexture) {
+                        child.material = new THREE.MeshStandardMaterial({ map: customTexture, roughness: 0.6 });
                     }
-                });
-            } else {
-                instance.traverse((child) => {
-                    if (child.isMesh) {
-                        child.castShadow = true;
-                        child.receiveShadow = true;
-                    }
-                });
-            }
+                }
+            });
 
-            // 3. Procedural Random Variation Transforms
-            const scaleRandomness = parseFloat(scaleRandomInput.value);
-            const baseScale = 1.0;
-            // Generates random variance distribution rules
-            const randomScaleOffset = (Math.random() - 0.5) * 2 * scaleRandomness * 0.5;
-            const finalScale = Math.max(0.2, baseScale + randomScaleOffset);
-            
-            instance.scale.set(finalScale, finalScale, finalScale);
-            
-            // Full 360-degree rotational orientation scattering
-            instance.rotation.y = Math.random() * Math.PI * 2; 
+            // 90-degree step snapping orientation matrix rule configuration for true isometric logic
+            const angleChoices = [0, Math.PI / 2, Math.PI, Math.PI * 1.5];
+            instance.rotation.y = angleChoices[Math.floor(Math.random() * angleChoices.length)];
 
-            // Position execution matching brush point
-            instance.position.copy(targetPosition);
+            instance.position.set(posX, 0, posZ);
             instance.name = "procedural_spawn";
-            
             scene.add(instance);
         }
 
-        // Raycast capture loop
-        function checkAndGenerate(e) {
-            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        // Universal Intersect Matrix Calculation
+        function parseInputCoordinate(clientX, clientY) {
+            mouse.x = (clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(clientY / window.innerHeight) * 2 + 1;
 
-            raycaster.setFromCamera(mouse, camera);
+            raycaster.setFromCamera(mouse, activeCamera);
             const intersects = raycaster.intersectObject(groundPlane);
 
             if (intersects.length > 0) {
-                const intersectPoint = intersects[0].point;
-                const minSpacing = parseFloat(brushRadiusInput.value);
-
-                // Ensure distance threshold is met before generating another object
-                if (lastPlacementPosition.distanceTo(intersectPoint) > minSpacing) {
-                    spawnProceduralAsset(intersectPoint);
-                    lastPlacementPosition.copy(intersectPoint);
-                }
+                const pt = intersects.point;
+                // Derive exact 2D vector coordinate addresses for the structural array grid
+                const gridX = Math.floor(pt.x / TILE_SIZE);
+                const gridZ = Math.floor(pt.z / TILE_SIZE);
+                generateProceduralTile(gridX, gridZ);
             }
         }
 
-        function onMouseDown(e) {
-            if (e.button === 0) { // Left Click only
-                isDragging = true;
-                // Force initial placement anchor calculation
-                lastPlacementPosition.set(Infinity, Infinity, Infinity); 
-                checkAndGenerate(e);
-            }
+        function onDrawStart(e) {
+            if (currentCameraMode !== 'ISO') return;
+            
+            // Bypass processing loops if the touch signature originates on the UI panel element
+            if (uiPanel.contains(e.target)) return;
+
+            isDrawing = true;
+            paintBtn.classList.add('active');
+            lastPlacedTile = { x: null, z: null };
+
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            parseInputCoordinate(clientX, clientY);
         }
 
-        function onMouseMove(e) {
-            if (isDragging) {
-                checkAndGenerate(e);
-            }
+        function onDrawingMove(e) {
+            if (!isDrawing || currentCameraMode !== 'ISO') return;
+            if (e.cancelable) e.preventDefault(); // Lock browser scrolling loops during execution window
+
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            parseInputCoordinate(clientX, clientY);
         }
 
-        function onMouseUp(e) {
-            if (e.button === 0) {
-                isDragging = false;
-            }
+        function onDrawEnd() {
+            isDrawing = false;
+            paintBtn.classList.remove('active');
         }
 
-        function clearGeneratedObjects() {
+        function clearEnvironment() {
             const targets = [];
             scene.traverse((child) => {
-                if (child.name === "procedural_spawn") {
-                    targets.push(child);
-                }
+                if (child.name === "procedural_spawn") targets.push(child);
             });
             targets.forEach(obj => scene.remove(obj));
         }
 
+        // Mobile Dual-Joystick Navigation System (FPV Engine Mapping)
+        function setupJoystickSystem() {
+            // Left Thumb Engine (Translational Movement Tracking)
+            moveJoyEl.addEventListener('touchstart', (e) => handleJoyStart(e, joyMoveProps), {passive:false});
+            window.addEventListener('touchmove', (e) => handleJoyMove(e, joyMoveProps, moveJoyEl.querySelector('.joy-stick')), {passive:false});
+            window.addEventListener('touchend', () => handleJoyEnd(joyMoveProps, moveJoyEl.querySelector('.joy-stick')));
+
+            // Right Thumb Engine (First Person Angle Calculations)
+            lookJoyEl.addEventListener('touchstart', (e) => handleJoyStart(e, joyLookProps), {passive:false});
+            window.addEventListener('touchmove', (e) => handleJoyMove(e, joyLookProps, lookJoyEl.querySelector('.joy-stick')), {passive:false});
+            window.addEventListener('touchend', () => handleJoyEnd(joyLookProps, lookJoyEl.querySelector('.joy-stick')));
+        }
+
+        function handleJoyStart(e, props) {
+            e.preventDefault();
+            props.active = true;
+            props.start = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            props.cur = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }
+
+        function handleJoyMove(e, props, visualStick) {
+            if (!props.active) return;
+            
+            // Isolate correct touch data index mapped to active pointer signature arrays
+            let touchItem = null;
+            for(let i=0; i<e.touches.length; i++) {
+                let dx = e.touches[i].clientX - props.start.x;
+                let dy = e.touches[i].clientY - props.start.y;
+                if(Math.sqrt(dx*dx + dy*dy) < 120) {
+                    touchItem = e.touches[i];
+                }
+            }
+            if(!touchItem) touchItem = e.touches[0];
+
+            props.cur = { x: touchItem.clientX, y: touchItem.clientY };
+
+            let deltaX = props.cur.x - props.start.x;
+            let deltaY = props.cur.y - props.start.y;
+            const dist = Math.min(Math.sqrt(deltaX*deltaX + deltaY*deltaY), 30); // Visual lock constraint diameter bounding limit
+            
+            const angle = Math.atan2(deltaY, deltaX);
+            const moveX = Math.cos(angle) * dist;
+            const moveY = Math.sin(angle) * dist;
+
+            visualStick.style.transform = `translate(${moveX}px, ${moveY}px)`;
+        }
+
+        function handleJoyEnd(props, visualStick) {
+            props.active = false;
+            props.start = {x:0, y:0};
+            props.cur = {x:0, y:0};
+            visualStick.style.transform = 'translate(0px, 0px)';
+        }
+
         function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
+            const aspect = window.innerWidth / window.innerHeight;
+            
+            const d = 15;
+            isoCamera.left = -d * aspect;
+            isoCamera.right = d * aspect;
+            isoCamera.top = d;
+            isoCamera.bottom = -d;
+            isoCamera.updateProjectionMatrix();
+
+            fpvCamera.aspect = aspect;
+            fpvCamera.updateProjectionMatrix();
+
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
+        // Central Frame Calculation Vector Engine Runtime Loops
         function animate() {
             requestAnimationFrame(animate);
-            controls.update();
-            renderer.render(scene, camera);
+
+            if (currentCameraMode === 'FPV') {
+                // 1. Process Structural Angle View Alterations (Right Joystick Matrix)
+                if (joyLookProps.active) {
+                    const lX = (joyLookProps.cur.x - joyLookProps.start.x) * 0.0007;
+                    const lY = (joyLookProps.cur.y - joyLookProps.start.y) * 0.0007;
+
+                    fpvEuler.y -= lX;
+                    fpvEuler.x -= lY;
+                    fpvEuler.x = Math.max(-Math.PI / 2.5, Math.min(Math.PI / 2.5, fpvEuler.x)); // Prevent flip
+
+                    fpvCamera.quaternion.setFromEuler(fpvEuler);
+                }
+
+                // 2. Process Physical Translational Movements (Left Joystick Matrix)
+                if (joyMoveProps.active) {
+                    const mX = (joyMoveProps.cur.x - joyMoveProps.start.x) * 0.004;
+                    const mY = (joyMoveProps.cur.y - joyMoveProps.start.y) * 0.004;
+
+                    moveVector.set(mX, 0, mY);
+                    moveVector.applyQuaternion(fpvCamera.quaternion);
+                    moveVector.y = 0; // Snap vertical matrix altitude calculations to floor ground heights
+                    
+                    fpvCamera.position.add(moveVector);
+                }
+            }
+
+            renderer.render(scene, activeCamera);
         }
     </script>
 </body>
 </html>
-
